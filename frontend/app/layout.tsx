@@ -1,8 +1,13 @@
-"use client"
 
 import { ThemeProvider } from "next-themes"
 import type { ReactNode } from "react"
 import "./globals.css"
+
+
+export const metadata = {
+  title: "Synapse",
+  description: "Multimodal AI Assistant",
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

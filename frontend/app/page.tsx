@@ -1,73 +1,109 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { Sora } from "next/font/google";
+import { examplePrompts } from "@/data/examples";
+import SearchBar from "@/components/searchbar"; 
+
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["300", "400", "600", "700"],
+});
+
+// Pick 3 random examples
+function getRandomExamples() {
+  const shuffled = [...examplePrompts].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, 3);
+}
 
 export default function Home() {
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [examples, setExamples] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
 
-  // Wait until theme is loaded on client
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    setExamples(getRandomExamples());
+  }, []);
 
   if (!mounted) {
-    // Avoid mismatched SSR vs client render
     return (
-      <main className="flex h-screen w-full items-center justify-center bg-background text-foreground">
+      <main className="flex h-screen items-center justify-center bg-background text-foreground">
         <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
       </main>
     );
   }
 
   return (
-    <main className="relative flex h-screen w-full flex-col items-center justify-center overflow-hidden bg-background text-foreground">
-      {/* --- Background Gradient --- */}
-      {theme === "light" ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute inset-0 flex items-center justify-center"
-        >
-          <div className="pointer-events-none absolute h-[400px] w-[400px] rounded-full bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-200 blur-[120px] opacity-60" />
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute inset-0 flex items-center justify-center"
-        >
-          <div className="pointer-events-none absolute h-[400px] w-[400px] rounded-full bg-gradient-to-br from-yellow-800 via-green-900 to-blue-900 blur-[120px] opacity-60" />
-        </motion.div>
-      )}
+    <main
+      className={`${sora.className} relative flex h-screen w-full flex-col items-center justify-center overflow-hidden bg-background text-foreground`}
+    >
+      {/* Spotlight background */}
+      <motion.div
+  initial={{ opacity: 0 }}
+  animate={{ opacity: 1 }}
+  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+>
 
-      {/* --- Content --- */}
-      <div className="z-10 flex flex-col items-center gap-6 px-4 text-center">
-        <h1 className="text-3xl font-medium sm:text-4xl">What can I help with?</h1>
+        <div
+          className={`pointer-events-none absolute h-[480px] w-[480px] rounded-full blur-[140px] opacity-40
+          ${
+            theme === "light"
+              ? "bg-gradient-to-br from-blue-200 via-indigo-200 to-purple-300"
+              : "bg-gradient-to-br from-teal-900 via-emerald-900 to-blue-900"
+          }`}
+        />
+      </motion.div>
 
-        <div className="w-full max-w-lg">
-          <Input
-            type="text"
-            placeholder="Ask me anything..."
-            className="h-12 w-full rounded-2xl border border-border bg-card/70 px-4 text-base backdrop-blur-md placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
+      {/* Main content */}
+      <div className="flex flex-col items-center justify-start pt-[16vh] px-4 text-center">
+
+        <h2 className="text-3xl sm:text-4xl font-light text-muted-foreground mb-0.5">
+          Good to see you again.
+        </h2>
+
+        <h1 className="text-4xl sm:text-5xl font-semibold mb-1">
+          What can I help with?
+        </h1>
+
+        <p className="text-sm sm:text-base text-muted-foreground mb-6 opacity-80">
+          I'm available 24/7 for you — ask me anything.
+        </p>
+
+        {/* ⭐ Search Bar Component */}
+        <div className="w-full flex max-w-xl mb-8 justify-center">
+        <SearchBar
+  query={query}
+  setQuery={setQuery}
+  onSearch={(q) => console.log("Searching:", q)}
+/>
+
+
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>Examples of queries:</span>
-          <div className="flex flex-wrap justify-center gap-2">
-            <button className="rounded-full border border-border/60 px-3 py-1 hover:bg-muted/20 transition">
-              Explain quantum entanglement
+        {/* Example chips */}
+        <div className="flex flex-wrap justify-center gap-3 text-sm text-muted-foreground">
+          {examples.map((ex, idx) => (
+            <button
+              key={idx}
+              className="
+                text-sm rounded-full 
+                border border-border/40 
+                px-3 py-1 z-20
+                transition 
+                hover:bg-muted/20 
+                cursor-pointer
+              "
+              onClick={() => setQuery(ex)}
+            >
+              {ex}
             </button>
-            <button className="rounded-full border border-border/60 px-3 py-1 hover:bg-muted/20 transition">
-              Generate creative app names
-            </button>
-            <button className="rounded-full border border-border/60 px-3 py-1 hover:bg-muted/20 transition">
-              Translate Latin phrases
-            </button>
-          </div>
+          ))}
         </div>
+
       </div>
     </main>
   );
