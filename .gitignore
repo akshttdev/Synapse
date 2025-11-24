@@ -2,17 +2,19 @@
 # GLOBAL IGNORE RULES
 ########################################
 
-# System
+# OS files
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
 
-# Logs
+# Logs & temporary files
 *.log
 logs/
 *.tmp
 tmp/
+temp/
+temp_files/
 
 ########################################
 # PYTHON / FASTAPI / WORKERS
@@ -29,22 +31,22 @@ venv/
 env/
 .venv/
 
-# Python build
+# Python packaging
 build/
 dist/
 *.egg-info/
 
-# Environment files
+# Environment variables
 .env
 .env.local
 .env.*.local
 
-# Celery
+# Celery state
 celerybeat-schedule
 celerybeat.pid
 
 ########################################
-# Node / Next.js FRONTEND
+# NODE / NEXT.JS FRONTEND
 ########################################
 
 node_modules/
@@ -57,8 +59,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Next.js special
-.next/
+# Deployment
 .vercel/
 .vercel_build_output/
 
@@ -66,7 +67,6 @@ yarn-error.log*
 # DOCKER
 ########################################
 
-# Docker artifacts
 docker-data/
 docker-cache/
 *.pid
@@ -83,78 +83,72 @@ docker-cache/
 .idea/
 *.iml
 
-# Others
+# Workspace files
 *.code-workspace
 
 ########################################
-# DATA FOLDERS (VERY IMPORTANT)
+# PROJECT DATA (IMPORTANT)
 ########################################
 
-# Ignore EVERYTHING inside /data
-data/raw/*
-data/processed/*
-data/embeddings/*
-data/compressed/*
-data/models/*
+# Ignore everything inside backend/data
+backend/data/**
+backend/data/thumbnails/**
+backend/data/embeddings.npy
+backend/data/*.json
+backend/data/*.npy
 
-# Allow placeholder keepers
-!data/raw/.keep
-!data/processed/.keep
-!data/embeddings/.keep
-!data/compressed/.keep
-!data/models/.keep
+# Allow placeholders if needed
+!backend/data/.keep
 
 ########################################
-# IMAGEBIND REPOSITORY
+# USER UPLOADED MEDIA / WORKER OUTPUT
 ########################################
 
-# Ignore entire cloned ImageBind repos
+# Local temp media (should live in MinIO, not git)
+media/
+uploads/
+downloads/
+tmp_media/
+temp_frames/
+worker_cache/
+
+########################################
+# MODEL WEIGHTS & IMAGEBIND
+########################################
+
+# Entire imagebind repo clones
 backend/imagebind/
 imagebind/
 imagebind-huge/
-imagebind_huge/
 imagebind-large/
 models/imagebind/
 models/
 
-# ImageBind model weights
+# Model weight files
 *.pth
 *.pt
 *.bin
 *.safetensors
 
-# Specific ImageBind huge model
+# Specific ImageBind large model
 imagebind_huge.pth
 backend/imagebind/imagebind_huge.pth
 models/imagebind_huge.pth
 
-
-# But in case you want to keep only your wrapper
-!backend/core/embeddings.py
-
 ########################################
-# QDRANT LOCAL DATA
+# QDRANT LOCAL STORAGE
 ########################################
 
 qdrant/
 qdrant_storage/
 snapshots/
+*.snapshot
 
 ########################################
-# MISC
+# MISC BACKUPS / CACHE
 ########################################
 
-# Python scratch files
 *.ipynb_checkpoints/
-
-# Videos/Audio/Images downloaded by workers
-downloads/
-media/
-temp/
-tmp_media/
-temp_frames/
-
-# Ignore any local backup files
 *~
 *.bak
-
+*.backup
