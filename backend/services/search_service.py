@@ -1,10 +1,25 @@
-import time
+"""
+SearchService — accepts a text query or an uploaded file (image/audio/video),
+embeds it in the right modality, queries Qdrant, records metrics, and shapes
+the response.
+"""
+from __future__ import annotations
+
 import logging
-from typing import Optional, Dict
+import os
+import tempfile
+import time
+import uuid
 from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import aiofiles
+from fastapi import UploadFile
 
 from core.config import get_settings
 from core.embeddings import get_embedder
+from core.metrics import incr_counter, record_event, record_query_latency
 from core.qdrant_client import get_qdrant_client
 
 logger = logging.getLogger(__name__)
@@ -16,64 +31,135 @@ class SearchService:
 
         self.embedder = get_embedder(
             device=self.settings.MODEL_DEVICE,
-            batch_size=self.settings.BATCH_SIZE
+            batch_size=self.settings.BATCH_SIZE,
         )
 
-        # No cache for now
-        self.cache = None
-
-        # Qdrant Cloud client
         self.qdrant = get_qdrant_client(
             url=self.settings.QDRANT_URL,
-            api_key=self.settings.QDRANT_API_KEY
+            api_key=self.settings.QDRANT_API_KEY,
         )
 
         self.collection = self.settings.QDRANT_COLLECTION
 
-    async def search(
+    # --- public ----------------------------------------------------------
+
+    async def search_text(
         self,
-        query: str,
-        modality: str = "text",
+        text: str,
         top_k: int = 50,
-        filters: Optional[Dict] = None
+        filters: Optional[Dict] = None,
     ) -> Dict:
+        t0 = time.time()
+        vec = self.embedder.embed_text([text])[0]
+        embed_ms = (time.time() - t0) * 1000
+        return self._do_search(
+            vec=vec.tolist(),
+            query_label=text,
+            query_modality="text",
+            top_k=top_k,
+            filters=filters,
+            embed_ms=embed_ms,
+        )
 
-        start = time.time()
+    async def search_file(
+        self,
+        file: UploadFile,
+        modality: str,
+        top_k: int = 50,
+        filters: Optional[Dict] = None,
+    ) -> Dict:
+        # Persist to a temp file so the embedder can read it from disk
+        suffix = Path(file.filename or "upload").suffix or _default_suffix(modality)
+        tmp_path = Path(tempfile.gettempdir()) / f"synapse-q-{uuid.uuid4().hex}{suffix}"
+        try:
+            async with aiofiles.open(tmp_path, "wb") as f:
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    await f.write(chunk)
 
-        embed_start = time.time()
-        vec = self.embedder.embed_text([query])[0]
-        embed_ms = (time.time() - embed_start) * 1000
+            t0 = time.time()
+            vec = self.embedder.embed_single(str(tmp_path), modality)
+            embed_ms = (time.time() - t0) * 1000
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
-        search_start = time.time()
+        label = file.filename or f"({modality} upload)"
+        return self._do_search(
+            vec=list(map(float, vec.tolist())),
+            query_label=label,
+            query_modality=modality,
+            top_k=top_k,
+            filters=filters,
+            embed_ms=embed_ms,
+        )
+
+    # --- internal --------------------------------------------------------
+
+    def _do_search(
+        self,
+        vec: List[float],
+        query_label: str,
+        query_modality: str,
+        top_k: int,
+        filters: Optional[Dict],
+        embed_ms: float,
+    ) -> Dict:
+        t0 = time.time()
         results = self.qdrant.search(
             collection_name=self.collection,
-            query_vector=vec.tolist(),
+            query_vector=vec,
             limit=top_k,
             with_payload=True,
+            query_filter=filters,  # qdrant-client tolerates a plain dict here
         )
-        search_ms = (time.time() - search_start) * 1000
+        search_ms = (time.time() - t0) * 1000
 
-        out = []
+        out: List[Dict[str, Any]] = []
         for r in results:
             payload = r.payload or {}
-            out.append({
-                "id": r.id,
-                "score": r.score,
-                "thumbnail_url": payload.get("thumbnail_url"),
-                "preview_url": payload.get("preview_url"),
-                "metadata": payload,
-            })
+            out.append(
+                {
+                    "id": r.id,
+                    "score": r.score,
+                    "modality": payload.get("modality"),
+                    "thumbnail_url": payload.get("thumbnail_url"),
+                    "preview_url": payload.get("preview_url"),
+                    "metadata": payload,
+                }
+            )
+
+        total_ms = embed_ms + search_ms
+        # Fire-and-forget metrics
+        record_query_latency(total_ms)
+        incr_counter("queries")
+        record_event(
+            "SEARCH",
+            f'"{query_label}" · {query_modality} · k={top_k} · {total_ms:.0f}ms',
+            modality=query_modality,
+            top_k=str(top_k),
+            latency_ms=f"{total_ms:.2f}",
+        )
 
         return {
             "results": out,
             "total": len(out),
-            "query": query,
-            "latency_ms": (time.time() - start) * 1000,
+            "query": query_label,
+            "query_modality": query_modality,
+            "latency_ms": round(total_ms, 2),
             "metrics": {
                 "embedding_ms": round(embed_ms, 2),
-                "search_ms": round(search_ms, 2)
-            }
+                "search_ms": round(search_ms, 2),
+            },
         }
+
+
+def _default_suffix(modality: str) -> str:
+    return {"image": ".jpg", "audio": ".wav", "video": ".mp4"}.get(modality, "")
 
 
 @lru_cache()

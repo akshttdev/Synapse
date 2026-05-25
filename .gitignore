@@ -152,3 +152,9 @@ snapshots/
 *~
 *.bak
 *.backup
+
+# Sample data fetched by scripts/fetch_samples.py — heavy, regenerable
+data/samples/
+
+# Full dataset fetched by scripts/fetch_dataset.py — multi-GB, regenerable
+data/dataset/

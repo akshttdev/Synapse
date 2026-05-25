@@ -94,14 +94,21 @@ class ImageBindEmbedder:
 
     @torch.inference_mode()
     def embed_videos(self, video_paths: List[str]) -> np.ndarray:
+        """
+        Real video embedding via ImageBind's video loader (5 uniformly-sampled
+        2-second clips, decoded with decord). Output lives in the VISION space
+        — same shared 1024-D sphere as image/text/audio.
+        """
         if self.model is None:
             raise RuntimeError("ImageBind model not loaded")
-        # For videos we'll sample a frame and treat as image (simple approach)
-        # For production you might extract multiple frames per video and aggregate.
         all_emb = []
         for i in range(0, len(video_paths), self.batch_size):
             batch = video_paths[i:i+self.batch_size]
-            inputs = {ModalityType.VISION: data.load_and_transform_vision_data(batch, device=self.device)}
+            inputs = {
+                ModalityType.VISION: data.load_and_transform_video_data(
+                    batch, device=self.device
+                )
+            }
             out = self.model(inputs)
             emb = out[ModalityType.VISION].cpu().numpy()
             all_emb.append(emb)
