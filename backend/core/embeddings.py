@@ -2,13 +2,54 @@
 """
 ImageBind embedder (GPU-enabled).
 Falls back to CPU if GPU unavailable.
+
+Video is embedded by sampling frames with ffmpeg and mean-pooling their VISION
+embeddings (same shared 1024-d space ImageBind's native video path lands in).
+This deliberately avoids `pytorchvideo`, which is painful/broken to install on
+Python 3.12 + modern torch. We stub it out below so `imagebind.data` still
+imports for text/image/audio (which never touch pytorchvideo).
 """
+import glob
 import logging
+import os
+import subprocess
+import sys
+import tempfile
+import types
 from typing import List
+
 import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
+
+# --- Make `imagebind.data` importable without a real pytorchvideo install. ---
+# imagebind/data.py imports pytorchvideo at module top. We only use the
+# text/image/audio transforms, so a stub satisfies the import; the video
+# functions (which would use it) are never called — we frame-sample instead.
+try:  # pragma: no cover - depends on environment
+    import pytorchvideo  # noqa: F401
+except Exception:  # noqa: BLE001
+    _pv = types.ModuleType("pytorchvideo")
+    _pv_t = types.ModuleType("pytorchvideo.transforms")
+    _pv_d = types.ModuleType("pytorchvideo.data")
+    _pv_cs = types.ModuleType("pytorchvideo.data.clip_sampling")
+    _pv_ev = types.ModuleType("pytorchvideo.data.encoded_video")
+    _pv_cs.ConstantClipsPerVideoSampler = object
+    _pv_ev.EncodedVideo = object
+    _pv_t.ShortSideScale = object
+    _pv_t.UniformTemporalSubsample = object
+    _pv.transforms = _pv_t
+    _pv.data = _pv_d
+    _pv_d.clip_sampling = _pv_cs
+    _pv_d.encoded_video = _pv_ev
+    sys.modules.update({
+        "pytorchvideo": _pv,
+        "pytorchvideo.transforms": _pv_t,
+        "pytorchvideo.data": _pv_d,
+        "pytorchvideo.data.clip_sampling": _pv_cs,
+        "pytorchvideo.data.encoded_video": _pv_ev,
+    })
 
 # Try to import ImageBind
 try:
@@ -102,29 +143,55 @@ class ImageBindEmbedder:
         norms = np.linalg.norm(result, axis=1, keepdims=True)
         return (result / (norms + 1e-8)).astype(np.float32)
 
+    @staticmethod
+    def _extract_frames(path: str, n: int) -> List[str]:
+        """Sample up to n frames from a video to temp jpgs via ffmpeg."""
+        d = tempfile.mkdtemp(prefix="synapse_frames_")
+        out = os.path.join(d, "f_%03d.jpg")
+        # Evenly-ish sampled frames, scaled down (ImageBind re-crops to 224).
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", path,
+             "-vf", "fps=1,scale=256:-2", "-frames:v", str(n), out],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        frames = sorted(glob.glob(os.path.join(d, "f_*.jpg")))
+        if not frames:  # very short clip — grab the first frame only
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", path,
+                 "-frames:v", "1", "-vf", "scale=256:-2", os.path.join(d, "f_000.jpg")],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            frames = sorted(glob.glob(os.path.join(d, "f_*.jpg")))
+        return frames
+
     @torch.inference_mode()
-    def embed_videos(self, video_paths: List[str]) -> np.ndarray:
+    def embed_videos(self, video_paths: List[str], num_frames: int = 6) -> np.ndarray:
         """
-        Real video embedding via ImageBind's video loader (5 uniformly-sampled
-        2-second clips, decoded with decord). Output lives in the VISION space
-        — same shared 1024-D sphere as image/text/audio.
+        Embed video by mean-pooling the VISION embeddings of sampled frames.
+        Lands in the same shared 1024-D space as image/text/audio, and needs no
+        pytorchvideo. One vector per input video.
         """
         if self.model is None:
             raise RuntimeError("ImageBind model not loaded")
-        all_emb = []
-        for i in range(0, len(video_paths), self.batch_size):
-            batch = video_paths[i:i+self.batch_size]
-            inputs = {
-                ModalityType.VISION: data.load_and_transform_video_data(
-                    batch, device=self.device
-                )
-            }
-            out = self._forward(inputs)
-            emb = out[ModalityType.VISION].cpu().numpy()
-            all_emb.append(emb)
-        result = np.vstack(all_emb).astype(np.float32)
-        norms = np.linalg.norm(result, axis=1, keepdims=True)
-        return (result / (norms + 1e-8)).astype(np.float32)
+        vecs = []
+        for path in video_paths:
+            frames = self._extract_frames(path, num_frames)
+            if not frames:
+                logger.warning("no frames extracted from %s; using zero vector", path)
+                vecs.append(np.zeros(1024, dtype=np.float32))
+                continue
+            try:
+                frame_emb = self.embed_images(frames)  # (F, 1024), L2-normalised
+                v = frame_emb.mean(axis=0)
+                v = v / (np.linalg.norm(v) + 1e-8)
+                vecs.append(v.astype(np.float32))
+            finally:
+                for f in frames:
+                    try:
+                        os.remove(f)
+                    except OSError:
+                        pass
+        return np.vstack(vecs).astype(np.float32)
 
     def embed_single(self, path: str, modality: str):
         modality = modality.lower()
