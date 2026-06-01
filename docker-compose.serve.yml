@@ -36,10 +36,28 @@ services:
       MODEL_FP16: "false"
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3000
+    # Live source mounts + --reload so code edits apply without an image rebuild.
+    command:
+      - uvicorn
+      - api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/api
+      - --reload-dir
+      - /app/core
+      - --reload-dir
+      - /app/services
     ports:
       - "8000:8000"
     volumes:
       - imagebind_ckpt:/app/.checkpoints   # 4.5GB weights, downloaded once
+      - ./backend/api:/app/api             # live source → uvicorn --reload
+      - ./backend/core:/app/core
+      - ./backend/services:/app/services
     depends_on:
       redis:
         condition: service_healthy

@@ -83,20 +83,13 @@ async def search_api(
 
     try:
         if modality == "text":
-            assert isinstance(source, str)
             return await search_service.search_text(
-                text=source, top_k=top_k, filters=parsed_filters
+                text=str(source), top_k=top_k, filters=parsed_filters
             )
 
-        # file-based search
-        assert isinstance(source, UploadFile)
-        # Light content-type sniff so misnamed fields fail fast.
-        ct = source.content_type or ""
-        if not ct.startswith(f"{modality}/"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{modality}_file content-type mismatch (got '{ct}')",
-            )
+        # File-based search (image / audio / video). We don't hard-assert the
+        # type or content-type — browsers send varied/blank content-types and
+        # the embedder validates the actual bytes anyway.
         return await search_service.search_file(
             file=source, modality=modality, top_k=top_k, filters=parsed_filters
         )
@@ -104,4 +97,6 @@ async def search_api(
         raise
     except Exception as e:  # noqa: BLE001
         logger.exception("Search failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Surface the class name when the message is empty, so the client/log
+        # never shows a bare {"detail":""} again.
+        raise HTTPException(status_code=500, detail=str(e) or e.__class__.__name__)
