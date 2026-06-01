@@ -139,8 +139,9 @@ models/imagebind_huge.pth
 # QDRANT LOCAL STORAGE
 ########################################
 
-qdrant/
-qdrant_storage/
+# Anchored to repo root so it ignores local Qdrant storage but NOT scripts/qdrant/
+/qdrant/
+/qdrant_storage/
 snapshots/
 *.snapshot
 
