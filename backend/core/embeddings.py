@@ -30,12 +30,41 @@ logger = logging.getLogger(__name__)
 try:  # pragma: no cover - depends on environment
     import pytorchvideo  # noqa: F401
 except Exception:  # noqa: BLE001
+    # ImageBind's AUDIO path uses ConstantClipsPerVideoSampler to split each
+    # file into clips, so it needs a REAL implementation — a bare `object`
+    # stub raises "object() takes no arguments". The video stubs below are
+    # never called (we frame-sample video instead).
+    class _ConstantClipsPerVideoSampler:
+        def __init__(self, clip_duration, clips_per_video, augs_per_clip=1):
+            self._clip_duration = float(clip_duration)
+            self._clips_per_video = int(clips_per_video)
+            self._augs_per_clip = int(augs_per_clip)
+            self._clip_index = 0
+            self._aug_index = 0
+
+        def __call__(self, last_clip_time, video_duration, annotation):
+            max_start = max(float(video_duration) - self._clip_duration, 0.0)
+            uniform = max_start / max(self._clips_per_video - 1, 1)
+            start = uniform * self._clip_index
+            end = start + self._clip_duration
+            clip_index, aug_index = self._clip_index, self._aug_index
+            self._aug_index += 1
+            if self._aug_index >= self._augs_per_clip:
+                self._aug_index = 0
+                self._clip_index += 1
+            is_last = self._clip_index >= self._clips_per_video
+            return (start, end, clip_index, aug_index, is_last)
+
+        def reset(self):
+            self._clip_index = 0
+            self._aug_index = 0
+
     _pv = types.ModuleType("pytorchvideo")
     _pv_t = types.ModuleType("pytorchvideo.transforms")
     _pv_d = types.ModuleType("pytorchvideo.data")
     _pv_cs = types.ModuleType("pytorchvideo.data.clip_sampling")
     _pv_ev = types.ModuleType("pytorchvideo.data.encoded_video")
-    _pv_cs.ConstantClipsPerVideoSampler = object
+    _pv_cs.ConstantClipsPerVideoSampler = _ConstantClipsPerVideoSampler
     _pv_ev.EncodedVideo = object
     _pv_t.ShortSideScale = object
     _pv_t.UniformTemporalSubsample = object
