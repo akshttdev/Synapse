@@ -5,6 +5,8 @@ the response.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import tempfile
@@ -21,6 +23,7 @@ from core.config import get_settings
 from core.embeddings import get_embedder
 from core.metrics import incr_counter, record_event, record_query_latency
 from core.qdrant_client import get_qdrant_client
+from core.cache import get_cache_manager
 from core import storage
 
 logger = logging.getLogger(__name__)
@@ -50,10 +53,26 @@ class SearchService:
         top_k: int = 50,
         filters: Optional[Dict] = None,
     ) -> Dict:
+        # Cache text-query responses — embedding on CPU is the slow part, so a
+        # repeat query becomes instant. Cached presigned urls stay valid as long
+        # as S3_PRESIGNED_EXPIRATION > CACHE_TTL (default 86400 > 3600).
+        cache = self._cache()
+        ckey = None
+        if cache is not None:
+            raw = json.dumps({"q": text, "k": top_k, "f": filters}, sort_keys=True, default=str)
+            ckey = "search:text:" + hashlib.sha1(raw.encode()).hexdigest()
+            try:
+                hit = cache.get(ckey)
+                if hit:
+                    hit["cached"] = True
+                    return hit
+            except Exception:  # noqa: BLE001
+                pass
+
         t0 = time.time()
         vec = self.embedder.embed_text([text])[0]
         embed_ms = (time.time() - t0) * 1000
-        return self._do_search(
+        result = self._do_search(
             vec=vec.tolist(),
             query_label=text,
             query_modality="text",
@@ -61,6 +80,12 @@ class SearchService:
             filters=filters,
             embed_ms=embed_ms,
         )
+        if cache is not None and ckey:
+            try:
+                cache.set(ckey, result, ex=self.settings.CACHE_TTL)
+            except Exception:  # noqa: BLE001
+                pass
+        return result
 
     async def search_file(
         self,
@@ -100,6 +125,14 @@ class SearchService:
         )
 
     # --- internal --------------------------------------------------------
+
+    @staticmethod
+    def _cache():
+        """Redis cache manager, or None if Redis is unavailable (never raises)."""
+        try:
+            return get_cache_manager()
+        except Exception:  # noqa: BLE001
+            return None
 
     @staticmethod
     def _presign(key: Optional[str]) -> Optional[str]:

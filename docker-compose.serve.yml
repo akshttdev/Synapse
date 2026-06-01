@@ -1,0 +1,70 @@
+# Local serving stack for Synapse — run on your Mac AFTER the box has populated
+# Qdrant Cloud + B2. ImageBind runs here (CPU) for query embedding, because it's
+# 4.5GB + GPU-hungry and can't run on a free web host.
+#
+#   docker compose -f docker-compose.serve.yml up --build
+#
+# Reads .env for B2 + Qdrant Cloud creds. First boot downloads ImageBind weights
+# (~4.5GB) into the imagebind_ckpt volume (persists across restarts).
+
+name: synapse-serve
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: synapse-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: synapse-api:serve
+    container_name: synapse-backend
+    restart: unless-stopped
+    env_file: .env            # B2 + Qdrant Cloud creds live here
+    environment:
+      # Override embed device for CPU serving; do NOT override QDRANT_URL — we
+      # want the Qdrant Cloud value from .env, not a local container.
+      MODEL_DEVICE: cpu
+      MODEL_FP16: "false"
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    volumes:
+      - imagebind_ckpt:/app/.checkpoints   # 4.5GB weights, downloaded once
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: synapse-web:serve
+    container_name: synapse-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  imagebind_ckpt:

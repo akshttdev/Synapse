@@ -33,14 +33,19 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu \
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
-# ImageBind from local checkout (no network).
+# ImageBind from local checkout. --no-deps: we avoid pytorchvideo (stubbed in
+# core/embeddings.py); its other deps (timm/ftfy/regex/einops/iopath) come from
+# requirements.txt above.
 COPY backend/ImageBind /opt/ImageBind
-RUN pip install -e /opt/ImageBind
+RUN pip install -e /opt/ImageBind --no-deps
 
 # App code.
 COPY backend/ /app/
 COPY workers/ /app/workers/
 COPY scripts/ /app/scripts/
+
+# ImageBind's text tokenizer loads "bpe/..." relative to CWD (/app). Make it resolve.
+RUN cp -r /opt/ImageBind/bpe /app/bpe
 
 # Default data dirs (compose mounts ./data over this).
 RUN mkdir -p /app/data/uploads /app/data/embeddings /app/data/thumbnails

@@ -16,13 +16,14 @@ torchvision==0.16.2
 torchaudio==2.1.2
 
 # ImageBind installed from local copy in backend/ImageBind/ via Dockerfile.
-# pytorchvideo is the only stubborn transitive dep — pin a working commit.
-pytorchvideo @ git+https://github.com/facebookresearch/pytorchvideo.git@6cdc929315aab1b5674b6dcf73b16ec99147735f
+# NOTE: pytorchvideo is intentionally NOT installed — core/embeddings.py stubs it
+# and embeds video via ffmpeg frame-sampling, avoiding its py3.12/torch install hell.
 timm
 ftfy
 regex
 einops
 iopath
+soundfile   # torchaudio backend for reading wav/mp3 (ESC-50)
 
 # Qdrant client
 qdrant-client==1.7.0
