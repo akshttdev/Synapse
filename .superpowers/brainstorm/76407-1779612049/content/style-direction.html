@@ -1,0 +1,172 @@
+<h2>Pick a visual direction for the landing</h2>
+<p class="subtitle">All three are dark-mode by default. They differ in how much they lean on motion, 3D, and visual weight. Click one to mark your pick — you can also describe a hybrid in the terminal.</p>
+
+<style>
+  /* local-only mockup styles */
+  .mock-card {
+    border-radius: 14px;
+    overflow: hidden;
+    background: #0a0a0c;
+    border: 1px solid #1f2024;
+    color: #e7e7ea;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  .mock-card .mock-preview {
+    aspect-ratio: 16/10;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid #1f2024;
+  }
+  .mock-card .mock-meta { padding: 14px 16px 16px; }
+  .mock-card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .mock-card .label { color: #8b8d95; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .mock-card p { margin: 8px 0 0; color: #b6b8bf; font-size: 13px; line-height: 1.5; }
+
+  /* OPTION A — Editorial minimal (Linear / Vercel / Cursor energy) */
+  .opt-a {
+    background:
+      radial-gradient(120% 80% at 80% 0%, rgba(52,211,153,0.10), transparent 60%),
+      linear-gradient(180deg, #0b0c0e 0%, #0a0a0c 100%);
+  }
+  .opt-a .hero-h1 {
+    position: absolute; left: 20px; right: 20px; top: 22px;
+    font-size: 22px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600;
+  }
+  .opt-a .hero-h1 .accent { color: #34d399; }
+  .opt-a .hero-sub {
+    position: absolute; left: 20px; top: 88px; right: 20px;
+    font-size: 10.5px; color: #9aa0a6; max-width: 220px; line-height: 1.45;
+  }
+  .opt-a .cta-row { position: absolute; left: 20px; top: 144px; display: flex; gap: 6px; }
+  .opt-a .cta-pri { background: #34d399; color: #06281f; font-size: 9px; padding: 5px 10px; border-radius: 6px; font-weight: 600; }
+  .opt-a .cta-sec { border: 1px solid #2a2d33; color: #e7e7ea; font-size: 9px; padding: 5px 10px; border-radius: 6px; }
+  .opt-a .grid-row {
+    position: absolute; left: 20px; right: 20px; bottom: 18px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  }
+  .opt-a .grid-row .cell {
+    aspect-ratio: 1/1; border-radius: 6px; border: 1px solid #1f2024;
+    background: linear-gradient(135deg, #131418, #0d0e11);
+    display: flex; align-items: flex-end; padding: 4px;
+    font-size: 7px; color: #6b6e76; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  /* OPTION B — Cinematic WebGL (immersive, scroll-driven) */
+  .opt-b {
+    background: radial-gradient(60% 60% at 50% 55%, #093a2c 0%, #061418 55%, #03070a 100%);
+    overflow: hidden;
+  }
+  .opt-b .field {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(2px 2px at 10% 30%, rgba(52,211,153,.9), transparent 60%),
+      radial-gradient(2px 2px at 18% 65%, rgba(99,102,241,.9), transparent 60%),
+      radial-gradient(2px 2px at 28% 22%, rgba(244,114,182,.9), transparent 60%),
+      radial-gradient(2px 2px at 36% 52%, rgba(56,189,248,.9), transparent 60%),
+      radial-gradient(2px 2px at 46% 18%, rgba(52,211,153,.7), transparent 60%),
+      radial-gradient(2px 2px at 58% 70%, rgba(99,102,241,.6), transparent 60%),
+      radial-gradient(2px 2px at 72% 30%, rgba(56,189,248,.8), transparent 60%),
+      radial-gradient(2px 2px at 84% 60%, rgba(244,114,182,.6), transparent 60%),
+      radial-gradient(2px 2px at 92% 40%, rgba(52,211,153,.7), transparent 60%);
+    filter: blur(0.3px);
+    opacity: 0.95;
+  }
+  .opt-b .scrim { position: absolute; inset: 0; background: radial-gradient(60% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.45) 100%); }
+  .opt-b .center-h1 {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; text-align: center; padding: 0 16px;
+  }
+  .opt-b .center-h1 h1 {
+    margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+    text-shadow: 0 0 24px rgba(52,211,153,0.25);
+  }
+  .opt-b .center-h1 .rotor { color: #34d399; font-style: italic; }
+  .opt-b .center-h1 p { margin: 8px 0 0; color: #b6b8bf; font-size: 11px; }
+  .opt-b .scroll-hint {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    color: #8b8d95; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+  }
+
+  /* OPTION C — Editorial brutalist (big type, asymmetric, almost magazine) */
+  .opt-c { background: #ededea; color: #0a0a0c; position: relative; }
+  .opt-c h1 {
+    position: absolute; left: 16px; top: 16px; right: 16px;
+    margin: 0; font-family: 'Times New Roman', Georgia, serif;
+    font-size: 34px; line-height: 0.88; letter-spacing: -0.04em; font-weight: 600;
+  }
+  .opt-c h1 i { font-style: italic; color: #145740; }
+  .opt-c .marker {
+    position: absolute; left: 16px; top: 130px; font-size: 9px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: #5a5a55;
+  }
+  .opt-c .bigblock {
+    position: absolute; right: 12px; bottom: 14px; width: 110px; height: 70px;
+    background: #0a0a0c; color: #ededea; border-radius: 0;
+    padding: 10px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .opt-c .bigblock .row { font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: #b6b8bf; }
+  .opt-c .bigblock .num { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .opt-c .pillrow {
+    position: absolute; left: 16px; bottom: 16px; display: flex; gap: 4px;
+  }
+  .opt-c .pillrow span {
+    border: 1px solid #0a0a0c; color: #0a0a0c; padding: 3px 8px; border-radius: 999px;
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+</style>
+
+<div class="cards">
+  <div class="card mock-card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="mock-preview opt-a">
+      <div class="hero-h1">Search anything<br/>with <span class="accent">anything.</span></div>
+      <div class="hero-sub">A single embedding space for image, audio, video, and text.</div>
+      <div class="cta-row"><span class="cta-pri">Try the demo</span><span class="cta-sec">Architecture</span></div>
+      <div class="grid-row">
+        <div class="cell">image</div><div class="cell">audio</div><div class="cell">video</div><div class="cell">text</div>
+      </div>
+    </div>
+    <div class="mock-meta">
+      <div class="label">A · Editorial Minimal</div>
+      <h3>Linear / Vercel / Cursor energy</h3>
+      <p>Dark slate, single emerald accent, refined typography, subtle gradients. Animations are tasteful: scroll-triggered fades, magnetic buttons, text-rotators, stagger reveals. Bulletproof, recruiter-safe.</p>
+    </div>
+  </div>
+
+  <div class="card mock-card" data-choice="cinematic" onclick="toggleSelect(this)">
+    <div class="mock-preview opt-b">
+      <div class="field"></div>
+      <div class="scrim"></div>
+      <div class="center-h1">
+        <h1>One space.<br/>Every <span class="rotor">modality</span>.</h1>
+        <p>1024-d shared embedding, queried in real time.</p>
+      </div>
+      <div class="scroll-hint">scroll</div>
+    </div>
+    <div class="mock-meta">
+      <div class="label">B · Cinematic WebGL</div>
+      <h3>Immersive, scroll-driven 3D</h3>
+      <p>Full-bleed WebGL hero (OGL — already in your deps) showing a live particle field representing the embedding space; modalities color-coded. Scroll scrubs camera + section reveals. High wow-factor, riskier on perf.</p>
+    </div>
+  </div>
+
+  <div class="card mock-card" data-choice="brutalist" onclick="toggleSelect(this)">
+    <div class="mock-preview opt-c">
+      <h1>Search<br/><i>anything</i><br/>with<br/><i>anything.</i></h1>
+      <div class="marker">— Synapse · v1.0</div>
+      <div class="pillrow"><span>image</span><span>audio</span><span>video</span></div>
+      <div class="bigblock">
+        <div class="row">p50</div>
+        <div class="num">142ms</div>
+        <div class="row">across 4 modalities</div>
+      </div>
+    </div>
+    <div class="mock-meta">
+      <div class="label">C · Editorial Brutalist</div>
+      <h3>Magazine type, asymmetric layout</h3>
+      <p>Cream background, serif display headlines, swiss-grid sections, big numbers as art. Animations: GSAP split-text reveals, marquee strips, asymmetric scroll parallax. Distinctive, but a tonal departure from the product.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:18px">Tip: a credible answer can also be a <b>hybrid</b> — for example, A minimal layout + a contained WebGL hero (a slice of B), keeping perf and recruiter-safety high. If that's your vibe, say so in the terminal.</p>

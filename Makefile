@@ -1,6 +1,9 @@
 .PHONY: help up down build rebuild logs ps shell-backend shell-worker shell-redis shell-qdrant clean nuke health demo snapshot ingest ingest-dry stats activity samples dataset
 
 COMPOSE ?= docker compose
+# Apple's /usr/bin/python3 has httpx + works; brew's 3.14 has a broken pyexpat
+# on this machine. Override with PYTHON=... if you have a venv.
+PYTHON ?= /usr/bin/python3
 
 help:
 	@echo "make up          start full stack"
@@ -17,8 +20,8 @@ help:
 	@echo "make snapshot    build static demo bank for frontend"
 	@echo "make samples             tiny test set (~30 MB) into data/samples/"
 	@echo "make dataset             full dataset (~2-3 GB) into data/dataset/"
-	@echo "make ingest PATH=...     ingest a file or folder via scripts/ingest.py"
-	@echo "make ingest-dry PATH=... list what would be ingested, don't upload"
+	@echo "make ingest SRC=...      ingest a file or folder via scripts/ingest.py"
+	@echo "make ingest-dry SRC=...  list what would be ingested, don't upload"
 	@echo "make stats               curl /api/v1/stats"
 	@echo "make activity            curl /api/v1/stats/activity"
 
@@ -44,7 +47,7 @@ ps:
 	$(COMPOSE) ps
 
 health:
-	@curl -fsS http://localhost:8000/health/ready | python3 -m json.tool || echo "backend not ready"
+	@curl -fsS http://localhost:8000/health/ready | $(PYTHON) -m json.tool || echo "backend not ready"
 
 shell-backend:
 	$(COMPOSE) exec backend bash
@@ -73,7 +76,7 @@ snapshot:
 # Fetch a starter set of public-domain media (~80 MB) into data/samples/.
 # Audio is generated locally; everything else is downloaded.
 samples:
-	@python3 scripts/fetch_samples.py
+	@$(PYTHON) scripts/fetch_samples.py
 
 # Fetch a real cross-modal dataset (~2-3 GB) into data/dataset/.
 # Default: 2000 images + 2000 text + 13 videos + 2000 ESC-50 audio clips.
@@ -84,33 +87,34 @@ TEXT ?=
 VIDEO ?=
 AUDIO ?=
 dataset:
-	@python3 scripts/fetch_dataset.py \
+	@$(PYTHON) scripts/fetch_dataset.py \
 		$(if $(IMAGES),--images $(IMAGES)) \
 		$(if $(TEXT),--text $(TEXT)) \
 		$(if $(VIDEO),--video $(VIDEO)) \
 		$(if $(AUDIO),--audio $(AUDIO))
 
 # Ingest a file or folder. Auto-detects modality and posts to /api/v1/upload.
-#   make ingest PATH=~/Pictures/dataset
-#   make ingest PATH=./song.mp3 TAG=research-2026 CONCURRENCY=6
-PATH ?=
+#   make ingest SRC=~/Pictures/dataset
+#   make ingest SRC=./song.mp3 TAG=research-2026 CONCURRENCY=6
+# Note: use SRC, not PATH — PATH would shadow the shell's $PATH and break python3.
+SRC ?=
 TAG ?=
 COLLECTION ?=
 CONCURRENCY ?= 4
 ingest:
-	@test -n "$(PATH)" || (echo 'usage: make ingest PATH=/path/to/data [TAG=...] [COLLECTION=...] [CONCURRENCY=N]'; exit 1)
-	@python3 scripts/ingest.py "$(PATH)" \
+	@test -n "$(SRC)" || (echo 'usage: make ingest SRC=/path/to/data [TAG=...] [COLLECTION=...] [CONCURRENCY=N]'; exit 1)
+	@$(PYTHON) scripts/ingest.py "$(SRC)" \
 		--concurrency $(CONCURRENCY) \
 		$(if $(TAG),--tag "$(TAG)") \
 		$(if $(COLLECTION),--collection "$(COLLECTION)") \
 		--skip-existing
 
 ingest-dry:
-	@test -n "$(PATH)" || (echo 'usage: make ingest-dry PATH=/path/to/data'; exit 1)
-	@python3 scripts/ingest.py "$(PATH)" --dry-run
+	@test -n "$(SRC)" || (echo 'usage: make ingest-dry SRC=/path/to/data'; exit 1)
+	@$(PYTHON) scripts/ingest.py "$(SRC)" --dry-run
 
 stats:
-	@curl -fsS http://localhost:8000/api/v1/stats | python3 -m json.tool || echo "backend not reachable"
+	@curl -fsS http://localhost:8000/api/v1/stats | $(PYTHON) -m json.tool || echo "backend not reachable"
 
 activity:
-	@curl -fsS http://localhost:8000/api/v1/stats/activity | python3 -m json.tool || echo "backend not reachable"
+	@curl -fsS http://localhost:8000/api/v1/stats/activity | $(PYTHON) -m json.tool || echo "backend not reachable"

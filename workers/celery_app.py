@@ -1,16 +1,15 @@
-# backend/celery_app.py
-import os
+"""Celery app entrypoint. Broker + result backend resolve from Settings."""
 from celery import Celery
-from dotenv import load_dotenv
+
 from core.config import get_settings
 
-load_dotenv()
 settings = get_settings()
 
-BROKER_URL = os.getenv("BROKER_URL", settings.REDIS_URL)
-RESULT_BACKEND = os.getenv("RESULT_BACKEND", settings.REDIS_URL)
-
-app = Celery("workers", broker=BROKER_URL, backend=RESULT_BACKEND)
+app = Celery(
+    "synapse",
+    broker=settings.celery_broker,
+    backend=settings.celery_backend,
+)
 
 app.conf.update(
     task_acks_late=True,

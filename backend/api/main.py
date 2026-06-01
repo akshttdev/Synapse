@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import time
 import logging
 
-from api.routes import search, upload, health, stats
+from api.routes import search, upload, health, stats, media
 from core.config import get_settings
 from core.cache import get_cache_manager
 
@@ -44,10 +44,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION, lifespan=lifespan)
 
+# NOTE: "*" origins are only valid when credentials are disabled. We use bearer-
+# free, cookie-free requests from the frontend, so this is the correct combo
+# (the previous "*" + allow_credentials=True is rejected by browsers at preflight).
+# Override with CORS_ORIGINS=comma,separated,origins to lock down later.
+import os as _os
+
+_cors_origins = [o.strip() for o in _os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -72,6 +79,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(search.router, prefix=f"{settings.API_V1_PREFIX}/search", tags=["search"])
 app.include_router(upload.router, prefix=f"{settings.API_V1_PREFIX}/upload", tags=["upload"])
 app.include_router(stats.router, prefix=f"{settings.API_V1_PREFIX}/stats", tags=["stats"])
+app.include_router(media.router, prefix=f"{settings.API_V1_PREFIX}/media", tags=["media"])
 app.include_router(health.router, prefix="/health", tags=["health"])
 
 

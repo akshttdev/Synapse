@@ -1,15 +1,127 @@
+# Synapse local stack.
+# Usage:
+#   cp .env.example .env   # fill AWS keys + (optional) override defaults
+#   docker compose up --build
+
+name: synapse
+
 services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: synapse-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: synapse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
   backend:
-    build: ./backend
-    image: synapse-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: synapse-api:dev
+    container_name: synapse-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/data/uploads
+      EMBEDDINGS_DIR: /app/data/embeddings
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env
-    environment:
-      QDRANT_API_KEY: ${QDRANT_API_KEY}
     volumes:
-      - ./backend:/app
+      - ./data:/app/data
+      - hf_cache:/root/.cache/huggingface
+      - torch_cache:/root/.cache/torch
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: synapse-api:dev
+    pull_policy: never
+    container_name: synapse-worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/data/uploads
+      EMBEDDINGS_DIR: /app/data/embeddings
+    command:
+      - celery
+      - -A
+      - workers.celery_app
+      - worker
+      - --loglevel=INFO
+      - -Q
+      - default,embeddings,uploads,cleanup
+      - -c
+      - "2"
+    volumes:
+      - ./data:/app/data
+      - hf_cache:/root/.cache/huggingface
+      - torch_cache:/root/.cache/torch
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A workers.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: synapse-web:dev
+    container_name: synapse-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
-  data:
+  qdrant_data:
+  hf_cache:
+  torch_cache:

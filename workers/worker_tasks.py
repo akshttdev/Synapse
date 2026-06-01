@@ -1,5 +1,5 @@
 # backend/workers/worker_tasks.py
-from celery_app import app
+from workers.celery_app import app
 from workers.tasks.upload_tasks import upload_file_task
 from workers.tasks.embedding_tasks import embed_media_task
 import logging

@@ -22,15 +22,25 @@ except Exception as e:
     ModalityType = None
 
 class ImageBindEmbedder:
-    def __init__(self, device: str = "cuda:0", batch_size: int = 32):
+    def __init__(self, device: str = "cuda:0", batch_size: int = 32, fp16: bool = True):
         self.device = device if torch.cuda.is_available() and device.startswith("cuda") else "cpu"
         self.batch_size = batch_size
+        # fp16 autocast only makes sense on CUDA; harmless to keep flag on CPU
+        # (we simply never enter the autocast context there).
+        self.use_fp16 = bool(fp16) and self.device != "cpu"
         self.model = None
-        logger.info(f"Initializing ImageBindEmbedder on {self.device}")
+        logger.info(f"Initializing ImageBindEmbedder on {self.device} (fp16={self.use_fp16})")
         if _IMAGEBIND_AVAILABLE:
             self._load_model()
         else:
             logger.warning("ImageBind package not installed. Embedding calls will fail until installed.")
+
+    def _forward(self, inputs):
+        """Run the model, using fp16 autocast on CUDA to fit small GPUs."""
+        if self.use_fp16:
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
+                return self.model(inputs)
+        return self.model(inputs)
 
     def _load_model(self):
         logger.info("Loading ImageBind model...")
@@ -55,7 +65,7 @@ class ImageBindEmbedder:
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i+self.batch_size]
             inputs = {ModalityType.TEXT: data.load_and_transform_text(batch, device=self.device)}
-            out = self.model(inputs)
+            out = self._forward(inputs)
             emb = out[ModalityType.TEXT].cpu().numpy()
             all_emb.append(emb)
         result = np.vstack(all_emb).astype(np.float32)
@@ -70,7 +80,7 @@ class ImageBindEmbedder:
         for i in range(0, len(image_paths), self.batch_size):
             batch = image_paths[i:i+self.batch_size]
             inputs = {ModalityType.VISION: data.load_and_transform_vision_data(batch, device=self.device)}
-            out = self.model(inputs)
+            out = self._forward(inputs)
             emb = out[ModalityType.VISION].cpu().numpy()
             all_emb.append(emb)
         result = np.vstack(all_emb).astype(np.float32)
@@ -85,7 +95,7 @@ class ImageBindEmbedder:
         for i in range(0, len(audio_paths), self.batch_size):
             batch = audio_paths[i:i+self.batch_size]
             inputs = {ModalityType.AUDIO: data.load_and_transform_audio_data(batch, device=self.device)}
-            out = self.model(inputs)
+            out = self._forward(inputs)
             emb = out[ModalityType.AUDIO].cpu().numpy()
             all_emb.append(emb)
         result = np.vstack(all_emb).astype(np.float32)
@@ -109,7 +119,7 @@ class ImageBindEmbedder:
                     batch, device=self.device
                 )
             }
-            out = self.model(inputs)
+            out = self._forward(inputs)
             emb = out[ModalityType.VISION].cpu().numpy()
             all_emb.append(emb)
         result = np.vstack(all_emb).astype(np.float32)
@@ -132,9 +142,18 @@ class ImageBindEmbedder:
 
 # singleton accessor
 _embedder = None
-def get_embedder(device: str = None, batch_size: int = None):
+def get_embedder(device: str = None, batch_size: int = None, fp16: bool = None):
     global _embedder
-    settings_device = device
     if _embedder is None:
-        _embedder = ImageBindEmbedder(device=(device or "cuda:0"), batch_size=(batch_size or 32))
+        if fp16 is None:
+            try:
+                from core.config import get_settings
+                fp16 = get_settings().MODEL_FP16
+            except Exception:  # noqa: BLE001
+                fp16 = True
+        _embedder = ImageBindEmbedder(
+            device=(device or "cuda:0"),
+            batch_size=(batch_size or 32),
+            fp16=fp16,
+        )
     return _embedder

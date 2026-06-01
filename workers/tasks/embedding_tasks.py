@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from qdrant_client.http.models import PointStruct
 
-from celery_app import app
+from workers.celery_app import app
 from core.config import get_settings
 from core.embeddings import get_embedder
 from core.metrics import record_event

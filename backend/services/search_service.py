@@ -21,6 +21,7 @@ from core.config import get_settings
 from core.embeddings import get_embedder
 from core.metrics import incr_counter, record_event, record_query_latency
 from core.qdrant_client import get_qdrant_client
+from core import storage
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,29 @@ class SearchService:
 
     # --- internal --------------------------------------------------------
 
+    @staticmethod
+    def _presign(key: Optional[str]) -> Optional[str]:
+        """Best-effort presigned GET url for an S3 key; never raises."""
+        if not key:
+            return None
+        try:
+            return storage.generate_presigned_url(key)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _media_url(self, key: Optional[str]) -> Optional[str]:
+        """
+        Browser-reachable URL for an object key. If S3_PUBLIC_BASE_URL is set
+        (e.g. the /api/v1/media proxy in front of box-local MinIO), build a
+        direct URL; otherwise fall back to a presigned GET (R2/Oracle/S3).
+        """
+        if not key:
+            return None
+        base = self.settings.S3_PUBLIC_BASE_URL
+        if base:
+            return f"{base.rstrip('/')}/{key.lstrip('/')}"
+        return self._presign(key)
+
     def _do_search(
         self,
         vec: List[float],
@@ -122,13 +146,23 @@ class SearchService:
         out: List[Dict[str, Any]] = []
         for r in results:
             payload = r.payload or {}
+            # Re-presign from stored S3 keys so URLs never go stale (the stored
+            # *_url fields are only a fallback for older points without keys).
+            thumb = (
+                self._media_url(payload.get("thumbnail_key") or payload.get("file_key"))
+                or payload.get("thumbnail_url")
+            )
+            preview = (
+                self._media_url(payload.get("preview_key") or payload.get("file_key"))
+                or payload.get("preview_url")
+            )
             out.append(
                 {
                     "id": r.id,
                     "score": r.score,
                     "modality": payload.get("modality"),
-                    "thumbnail_url": payload.get("thumbnail_url"),
-                    "preview_url": payload.get("preview_url"),
+                    "thumbnail_url": thumb,
+                    "preview_url": preview,
                     "metadata": payload,
                 }
             )

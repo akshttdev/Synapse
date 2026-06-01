@@ -1,5 +1,5 @@
 # backend/workers/tasks/upload_tasks.py
-from celery_app import app
+from workers.celery_app import app
 import logging
 from pathlib import Path
 from typing import Dict

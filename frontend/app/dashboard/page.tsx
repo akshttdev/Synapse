@@ -33,8 +33,7 @@ const ACTIVITY: Activity[] = [
 function pickGreeting(h: number): string {
   if (h >= 5 && h < 12) return 'Good Morning';
   if (h < 17) return 'Good Afternoon';
-  if (h < 21) return 'Good Evening';
-  return 'Good Night';
+  return 'Good Evening';
 }
 
 export default function DashboardOverview() {
@@ -65,7 +64,7 @@ export default function DashboardOverview() {
           </span>
           <h1 className="mt-3 font-mono text-[clamp(32px,3.6vw,48px)] leading-[1.15] tracking-normal uppercase">
             {greeting},
-            <span className="text-[#2563eb] ml-2">Akshat</span>.
+            <span className="text-[#2563eb] ml-2">USER</span>.
           </h1>
           <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.22em] text-[#0a0a0c]/55">
             Here's what's happening

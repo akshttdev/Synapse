@@ -4,7 +4,7 @@ Cleanup tasks: remove temporary files and stale data
 
 import logging
 from pathlib import Path
-from celery_app import app
+from workers.celery_app import app
 import shutil
 import os
 

@@ -1,0 +1,301 @@
+<h2>The film — storyboard / beat sheet</h2>
+<p class="subtitle">Six connected scenes. One canvas. One scroll-driven timeline. Each beat shows what the shared WebGL field does, what the camera does, and what text overlays appear. The transitions <i>between</i> beats are the magic — particles physically rearrange into the next composition rather than fading out.</p>
+
+<style>
+  .reel {
+    display: grid; grid-template-columns: 1fr; gap: 14px;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #e7e7ea;
+  }
+  .beat {
+    display: grid; grid-template-columns: 80px 1.2fr 1fr; gap: 16px; align-items: stretch;
+    background: #0a0a0c; border: 1px solid #1f2024; border-radius: 14px; padding: 14px;
+    position: relative;
+  }
+  .beat .num {
+    font-family: 'Times New Roman', serif; font-size: 56px; line-height: 1; font-style: italic; color: #34d399; opacity: 0.95;
+  }
+  .beat .frame {
+    aspect-ratio: 16/9; border-radius: 10px; border: 1px solid #1f2024; position: relative; overflow: hidden;
+    background: #06080b;
+  }
+  .beat h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .beat .lbl { font-family: ui-monospace, monospace; font-size: 10px; color: #34d399; letter-spacing: 0.12em; text-transform: uppercase; }
+  .beat .meta p { margin: 6px 0; font-size: 12.5px; line-height: 1.5; color: #b6b8bf; }
+  .beat .meta .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .beat .meta .row span {
+    border: 1px solid #1f2024; color: #b6b8bf; font-family: ui-monospace, monospace;
+    font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  }
+
+  /* connectors between beats */
+  .beat::after {
+    content: ''; position: absolute; left: 40px; bottom: -14px; width: 2px; height: 14px;
+    background: linear-gradient(180deg, #34d399, transparent);
+  }
+  .beat:last-child::after { display: none; }
+
+  /* FRAME LOOKS — each scene */
+  .scene { position: absolute; inset: 0; }
+  .scene .h {
+    position: absolute; left: 12px; top: 12px; right: 12px;
+    font-family: 'Times New Roman', serif; font-size: 18px; line-height: 0.95; letter-spacing: -0.02em; font-weight: 600;
+  }
+  .scene .h i { font-style: italic; color: #34d399; }
+  .scene .footer {
+    position: absolute; left: 12px; bottom: 10px; right: 12px;
+    display: flex; justify-content: space-between; font-family: ui-monospace, monospace;
+    font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: #8b8d95;
+  }
+
+  /* B1 — opening: single bright pulse forms in void */
+  .b1 { background: radial-gradient(20% 30% at 50% 55%, #093a2c 0%, #061418 30%, #03070a 70%); }
+  .b1 .pulse {
+    position: absolute; left: 50%; top: 55%; width: 6px; height: 6px; background: #34d399;
+    border-radius: 50%; transform: translate(-50%, -50%);
+    box-shadow: 0 0 18px #34d399, 0 0 40px rgba(52,211,153,0.45);
+  }
+
+  /* B2 — pulse explodes into wide particle cloud (hero) */
+  .b2 { background: radial-gradient(60% 70% at 50% 55%, #093a2c 0%, #061418 55%, #03070a 100%); }
+  .b2 .cloud {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1.5px 1.5px at 8% 30%, rgba(52,211,153,.9), transparent 60%),
+      radial-gradient(1.5px 1.5px at 18% 65%, rgba(99,102,241,.85), transparent 60%),
+      radial-gradient(1.5px 1.5px at 28% 22%, rgba(244,114,182,.9), transparent 60%),
+      radial-gradient(1.5px 1.5px at 36% 52%, rgba(56,189,248,.85), transparent 60%),
+      radial-gradient(1.5px 1.5px at 46% 18%, rgba(52,211,153,.7), transparent 60%),
+      radial-gradient(1.5px 1.5px at 58% 70%, rgba(99,102,241,.6), transparent 60%),
+      radial-gradient(1.5px 1.5px at 72% 30%, rgba(56,189,248,.8), transparent 60%),
+      radial-gradient(1.5px 1.5px at 84% 60%, rgba(244,114,182,.6), transparent 60%),
+      radial-gradient(1.5px 1.5px at 92% 40%, rgba(52,211,153,.7), transparent 60%);
+  }
+
+  /* B3 — particles drift toward and converge on a centered query */
+  .b3 { background: radial-gradient(50% 60% at 50% 55%, #0a2238 0%, #04060a 70%); }
+  .b3 .conv {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1.5px 1.5px at 14% 40%, rgba(52,211,153,.8), transparent 60%),
+      radial-gradient(1.5px 1.5px at 24% 60%, rgba(99,102,241,.8), transparent 60%),
+      radial-gradient(1.5px 1.5px at 80% 35%, rgba(56,189,248,.8), transparent 60%),
+      radial-gradient(1.5px 1.5px at 88% 60%, rgba(244,114,182,.8), transparent 60%);
+  }
+  .b3 .query-pill {
+    position: absolute; left: 50%; top: 55%; transform: translate(-50%,-50%);
+    background: rgba(10,10,12,0.7); border: 1px solid #34d399; border-radius: 999px;
+    padding: 6px 14px; font-family: ui-monospace, monospace; font-size: 10px; color: #34d399;
+    backdrop-filter: blur(8px);
+  }
+  .b3 .lines {
+    position: absolute; left: 50%; top: 55%; width: 1px; height: 1px;
+  }
+
+  /* B4 — particles split into 4 clusters (modalities) with thin labels */
+  .b4 { background: linear-gradient(180deg, #03070a 0%, #061418 100%); }
+  .b4 .four {
+    position: absolute; inset: 14px;
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px;
+  }
+  .b4 .q {
+    border: 1px dashed #1f2024; border-radius: 6px; position: relative; padding: 6px;
+    font-family: ui-monospace, monospace; font-size: 8px; color: #8b8d95; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .b4 .q .dots {
+    position: absolute; inset: 14px 6px 6px;
+  }
+  .b4 .q:nth-child(1) .dots { background-image: radial-gradient(1.5px 1.5px at 20% 30%, rgba(99,102,241,.9), transparent), radial-gradient(1.5px 1.5px at 60% 70%, rgba(99,102,241,.8), transparent), radial-gradient(1.5px 1.5px at 80% 40%, rgba(99,102,241,.8), transparent); }
+  .b4 .q:nth-child(2) .dots { background-image: radial-gradient(1.5px 1.5px at 30% 50%, rgba(244,114,182,.9), transparent), radial-gradient(1.5px 1.5px at 70% 30%, rgba(244,114,182,.8), transparent), radial-gradient(1.5px 1.5px at 50% 70%, rgba(244,114,182,.8), transparent); }
+  .b4 .q:nth-child(3) .dots { background-image: radial-gradient(1.5px 1.5px at 25% 60%, rgba(56,189,248,.9), transparent), radial-gradient(1.5px 1.5px at 70% 20%, rgba(56,189,248,.8), transparent), radial-gradient(1.5px 1.5px at 85% 70%, rgba(56,189,248,.8), transparent); }
+  .b4 .q:nth-child(4) .dots { background-image: radial-gradient(1.5px 1.5px at 30% 30%, rgba(251,191,36,.9), transparent), radial-gradient(1.5px 1.5px at 60% 55%, rgba(251,191,36,.8), transparent), radial-gradient(1.5px 1.5px at 80% 75%, rgba(251,191,36,.8), transparent); }
+
+  /* B5 — paper-flip: cream, big serif quote */
+  .b5 { background: #ededea; }
+  .b5 .quote {
+    position: absolute; left: 14px; right: 14px; top: 50%; transform: translateY(-50%);
+    font-family: 'Times New Roman', serif; font-size: 22px; line-height: 0.95;
+    letter-spacing: -0.03em; color: #0a0a0c; font-weight: 600;
+  }
+  .b5 .quote i { font-style: italic; color: #145740; }
+  .b5 .meta-corner {
+    position: absolute; left: 14px; bottom: 10px; right: 14px;
+    font-family: ui-monospace, monospace; font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: #5a5a55;
+    display: flex; justify-content: space-between;
+  }
+
+  /* B6 — architecture: zoomed-out network of nodes, particles flow along edges */
+  .b6 { background: radial-gradient(60% 70% at 50% 50%, #082035 0%, #03070a 80%); }
+  .b6 .nodes {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(3px 3px at 15% 30%, #34d399, transparent 70%),
+      radial-gradient(3px 3px at 50% 18%, #6366f1, transparent 70%),
+      radial-gradient(3px 3px at 85% 30%, #f472b6, transparent 70%),
+      radial-gradient(3px 3px at 30% 70%, #38bdf8, transparent 70%),
+      radial-gradient(3px 3px at 70% 72%, #fbbf24, transparent 70%);
+  }
+  .b6 .edges {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(45deg, transparent 49%, rgba(52,211,153,0.18) 49%, rgba(52,211,153,0.18) 51%, transparent 51%),
+      linear-gradient(-45deg, transparent 49%, rgba(99,102,241,0.14) 49%, rgba(99,102,241,0.14) 51%, transparent 51%);
+    background-size: 30px 30px, 40px 40px;
+    opacity: 0.4;
+  }
+
+  /* B7 — outro: particles re-collapse into a single bright point */
+  .b7 { background: radial-gradient(20% 30% at 50% 55%, #093a2c 0%, #061418 30%, #03070a 100%); }
+  .b7 .pulse {
+    position: absolute; left: 50%; top: 55%; width: 10px; height: 10px; background: #34d399;
+    border-radius: 50%; transform: translate(-50%, -50%);
+    box-shadow: 0 0 24px #34d399, 0 0 60px rgba(52,211,153,0.55);
+  }
+  .b7 .cta {
+    position: absolute; left: 50%; bottom: 26%; transform: translateX(-50%);
+    background: #34d399; color: #06281f; padding: 6px 12px; border-radius: 999px;
+    font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600;
+  }
+</style>
+
+<div class="reel">
+
+  <div class="beat">
+    <div class="num">I</div>
+    <div class="frame">
+      <div class="scene b1">
+        <div class="pulse"></div>
+        <div class="footer"><span>00:00 — open on void</span><span>scroll progress 0–8%</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 1 · Cold open</div>
+      <h3>A single point in the void.</h3>
+      <p>The page loads on black. One bright emerald pulse, slow heartbeat at 0.8 Hz. No text. No nav. Three seconds of breathing space — the only website that doesn't yell.</p>
+      <div class="row"><span>camera: locked</span><span>particles: 1</span><span>overlay: none</span><span>nav: hidden</span></div>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="num">II</div>
+    <div class="frame">
+      <div class="scene b2">
+        <div class="cloud"></div>
+        <div class="h">Search <i>anything</i><br/>with anything.</div>
+        <div class="footer"><span>00:03 — pulse → cloud</span><span>scroll 8–22%</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 2 · Reveal / hero</div>
+      <h3>The point explodes into a cloud.</h3>
+      <p>On scroll-start, the pulse fans out into ~8,000 particles. Each modality has a color (emerald / indigo / sky / pink / amber). Nav fades in from top. Headline characters split-text in. Cursor parallax tilts the field 2-3°.</p>
+      <div class="row"><span>camera: wide</span><span>particles: ~8k</span><span>type: split-in</span><span>cursor: parallax</span></div>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="num">III</div>
+    <div class="frame">
+      <div class="scene b3">
+        <div class="conv"></div>
+        <div class="query-pill">"thunderstorm"</div>
+        <div class="h" style="color:#b6b8bf">Watch a real query<br/><i>find its neighbours.</i></div>
+        <div class="footer"><span>00:08 — converge</span><span>scroll 22–40%</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 3 · Live demo</div>
+      <h3>Particles converge on a query.</h3>
+      <p>A search pill drops into the center. The nearest particles flow toward it along curved trajectories, dragging trails. As they arrive, mocked result cards (image/audio/video/text) materialise in a perspective grid. Latency ticker counts up: <code>0…127ms</code>.</p>
+      <div class="row"><span>camera: dolly-in</span><span>particles: gravity</span><span>cards: stagger</span><span>ticker: live</span></div>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="num">IV</div>
+    <div class="frame">
+      <div class="scene b4">
+        <div class="four">
+          <div class="q">image · indigo<div class="dots"></div></div>
+          <div class="q">audio · pink<div class="dots"></div></div>
+          <div class="q">video · sky<div class="dots"></div></div>
+          <div class="q">text · amber<div class="dots"></div></div>
+        </div>
+        <div class="footer"><span>00:14 — separate</span><span>scroll 40–58%</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 4 · Four worlds</div>
+      <h3>The cloud separates by modality.</h3>
+      <p>Camera pulls back. The single particle field splits into four labelled quadrants — one per modality. Hover any quadrant: nearby particles ripple, an example artifact reveals (waveform for audio, frame strip for video, etc.). This is the "depth" beat.</p>
+      <div class="row"><span>camera: pull-back</span><span>particles: 4 clusters</span><span>hover: ripple</span></div>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="num">V</div>
+    <div class="frame">
+      <div class="scene b5">
+        <div class="quote">"Search is not<br/><i>a feature.</i><br/>It is a <i>fabric.</i>"</div>
+        <div class="meta-corner"><span>—Synapse manifesto</span><span>00:20 · paper-flip</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 5 · Paper flip</div>
+      <h3>Cut to cream. Editorial pause.</h3>
+      <p>WebGL canvas fades out behind a cream wash. Page color-grades to paper. Huge serif quote pin-scrolls word-by-word. This is the emotional beat — a deliberate stop that makes the next scene hit harder. Lasts ~one viewport of scroll.</p>
+      <div class="row"><span>canvas: fade</span><span>palette: paper</span><span>type: word-morph</span><span>pin: 100vh</span></div>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="num">VI</div>
+    <div class="frame">
+      <div class="scene b6">
+        <div class="edges"></div>
+        <div class="nodes"></div>
+        <div class="h" style="color:#fff">The architecture<br/><i>is the story.</i></div>
+        <div class="footer"><span>00:26 — zoom out</span><span>scroll 58–82%</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 6 · System view</div>
+      <h3>Pull all the way back. We see the network.</h3>
+      <p>Canvas re-emerges. Camera dollies out. The four quadrants become nodes in a system diagram: Browser → Next.js → FastAPI → Qdrant → ImageBind → S3. Particles flow along edges in real time as if requests are happening. Click any node to pin a tooltip.</p>
+      <div class="row"><span>camera: wide</span><span>particles: along-edges</span><span>interaction: click-node</span></div>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="num">VII</div>
+    <div class="frame">
+      <div class="scene b7">
+        <div class="pulse"></div>
+        <div class="h" style="text-align:center; left:0; right:0; top:18%; padding:0 12px">Start the search.</div>
+        <div class="cta">Open the demo →</div>
+        <div class="footer"><span>00:34 — collapse</span><span>scroll 82–100%</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="lbl">Beat 7 · Outro</div>
+      <h3>Everything collapses back to one point.</h3>
+      <p>Mirror of beat 1. Particles re-converge into a single emerald pulse — but now it's a button. Headline lands on top: <i>Start the search.</i> One magnetic CTA. Footer slides in beneath. The film ends where it began.</p>
+      <div class="row"><span>camera: lock</span><span>particles: collapse</span><span>cta: magnetic</span></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="options" style="margin-top:24px">
+  <div class="option" data-choice="ship" onclick="toggleSelect(this)">
+    <div class="letter">▶</div>
+    <div class="content"><h3>Ship this storyboard</h3><p>Seven beats, one canvas, one timeline. Move to writing the spec.</p></div>
+  </div>
+  <div class="option" data-choice="tighten" onclick="toggleSelect(this)">
+    <div class="letter">✂</div>
+    <div class="content"><h3>Tighten — drop or reorder beats</h3><p>Tell me in the terminal which beats to cut/merge (e.g. "drop the paper flip", "merge 4 + 6", "no live demo card").</p></div>
+  </div>
+  <div class="option" data-choice="more" onclick="toggleSelect(this)">
+    <div class="letter">＋</div>
+    <div class="content"><h3>More cinematic — add beats / sound / page transitions</h3><p>E.g. ambient soundtrack toggle, intro page transition, in-scene cuts.</p></div>
+  </div>
+</div>
