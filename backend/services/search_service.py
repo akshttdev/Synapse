@@ -25,6 +25,7 @@ from core.metrics import incr_counter, record_event, record_query_latency
 from core.qdrant_client import get_qdrant_client
 from core.cache import get_cache_manager
 from core import storage
+from qdrant_client import models as qmodels
 
 logger = logging.getLogger(__name__)
 
@@ -169,13 +170,33 @@ class SearchService:
         t0 = time.time()
         # qdrant-client >=1.12 uses query_points() (the old .search() was removed
         # in 1.16). .points is the list of ScoredPoint (id/score/payload).
-        results = self.qdrant.query_points(
-            collection_name=self.collection,
-            query=vec,
-            limit=top_k,
-            with_payload=True,
-            query_filter=filters,  # qdrant-client tolerates a plain dict here
-        ).points
+        if filters:
+            # Caller restricted results (e.g. a modality pill) — honour it as-is.
+            results = self.qdrant.query_points(
+                collection_name=self.collection,
+                query=vec,
+                limit=top_k,
+                with_payload=True,
+                query_filter=filters,
+            ).points
+        else:
+            # Balanced cross-modal: ImageBind has a modality gap (same-modality
+            # vectors cluster tighter), so a plain top-k is text-heavy. Pull the
+            # best of EACH modality and merge so the grid shows a real mix.
+            per = max(2, top_k // 4)
+            merged = []
+            for m in ("image", "audio", "video", "text"):
+                mf = qmodels.Filter(must=[qmodels.FieldCondition(
+                    key="modality", match=qmodels.MatchValue(value=m))])
+                merged.extend(self.qdrant.query_points(
+                    collection_name=self.collection,
+                    query=vec,
+                    limit=per,
+                    with_payload=True,
+                    query_filter=mf,
+                ).points)
+            merged.sort(key=lambda p: p.score, reverse=True)
+            results = merged[:top_k]
         search_ms = (time.time() - t0) * 1000
 
         out: List[Dict[str, Any]] = []
