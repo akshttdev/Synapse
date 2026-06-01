@@ -1,184 +1,151 @@
+<div align="center">
+
 # Synapse
 
-**One 1024-dimensional embedding space for image, audio, video, and text. Search anything with anything.**
+**Search anything with anything.** One 1024‑dimensional embedding space for **image, audio, video, and text** — query with a photo, get back sounds; query with a word, get back clips. The geometry does the work.
 
-Synapse is a self-hostable multimodal vector search stack. You drop in any asset — a photo, a 30-second clip, a paragraph — and Synapse embeds it into a shared 1024-D space using ImageBind, indexes it with Qdrant (HNSW + int8 quantization), and serves cross-modal nearest-neighbor queries at ~30ms P50.
+`ImageBind` · `Qdrant` · `FastAPI` · `Next.js` · `Backblaze B2`
 
-Query with a photo, get back audio. Query with text, get back video. The geometry handles it.
-
-[Handbook →](./docs/handbook)
+</div>
 
 ---
 
-## Why Synapse
+## What it is
 
-Most vector search stacks are unimodal — text-only, or image-only, or a custom multi-tower setup glued together. The minute a product needs to mix modalities, the team ends up with one index per modality, separate query paths, and a bolt-on fusion layer that's slow and brittle.
+Most vector search is single‑modality — text‑only or image‑only — and the moment you need to mix modalities you end up with one index per type, separate query paths, and a brittle fusion layer.
 
-Synapse takes a different bet: **one model, one space, one index**. ImageBind projects every modality into the same 1024-D sphere, so a cosine similarity in that space is meaningful regardless of what's on either end of the comparison. The infrastructure shrinks to one query path. Ranking, filtering, and reranking work uniformly.
+Synapse takes one bet: **one model, one space, one index.** [ImageBind](https://github.com/facebookresearch/ImageBind) projects every modality into the *same* 1024‑D unit sphere, so a single cosine similarity is meaningful no matter what's on either end. Type `"dog barking"` and you get the dog photo, the bark recording, the dog clip, and the encyclopedia entry — ranked together, from one query against one collection.
 
-Tradeoff: you commit to ImageBind's latent geometry. If your domain needs a domain-specific encoder, swap it at the collection level — Synapse is pluggable on the encoder side.
+This repo is a **working, end‑to‑end build**: a real cross‑modal index of **5,712 vectors across 293 subjects** (images, audio, video, text), embedded on a GPU, stored in Qdrant Cloud + Backblaze B2, and served by a FastAPI backend behind a Next.js frontend.
 
 ---
 
 ## How it works
 
+**Serving (a query):**
+
 ```
-┌──────────┐    ┌───────────────┐    ┌─────────────┐    ┌────────────┐    ┌──────────┐
-│  CLIENT  │───▶│  FastAPI /v1  │───▶│   Celery    │───▶│ ImageBind  │───▶│  Qdrant  │
-│ ANY MODE │    │  ingest · srch│    │  workers    │    │   1024-D   │    │ HNSW·int8│
-└──────────┘    └───────┬───────┘    └─────────────┘    └────────────┘    └─────┬────┘
-                        │                                                       │
-                        │              ┌─────────────┐                          │
-                        │              │   Postgres  │  ← metadata, auth        │
-                        │              │   Redis     │  ← broker, cache         │
-                        │              │   MinIO/S3  │  ← raw assets            │
-                        │              └─────────────┘                          │
-                        └───────────────────────────────────────────────────────┘
-                                       k-NN results streamed back (SSE)
+Browser ──POST /api/v1/search (text | image | audio | video)──▶ FastAPI
+                                                                  │
+                                          embed the query with ImageBind
+                                          → one 1024-D vector
+                                                                  │
+                                  balanced per-modality k-NN ─────┼────▶ Qdrant Cloud
+                                  (HNSW + int8, modality filter)  │      (5,712 vectors)
+                                                                  ◀──── top-k + payload
+                                          presign each item's key │
+                                                                  ▼
+                                                          Backblaze B2  ──media URLs──▶ Browser grid
 ```
 
-The interesting bit is the **shared space**: every asset gets one 1024-D vector regardless of modality, normalized to a unit sphere. A query is also a vector. Search is `cosine(query, candidate)` against the HNSW index, with optional metadata filters pushed into Qdrant's payload index *before* the ANN scan.
+**Ingestion (one-time, on a GPU):**
+
+```
+fetch_aligned.py        download a keyless, cross-modal dataset
+        │               (Pixabay images · ESC-50 audio · Wikipedia text · Wikimedia video)
+        ▼
+build_index.py          embed each item on the GPU (ImageBind, fp16)
+        │               → upload original/thumbnail to B2  → upsert vector+payload to Qdrant
+        ▼
+snapshot.py             scroll every vector → gzipped JSONL → B2 (disaster recovery)
+```
+
+The interesting part is the **shared space**: every asset becomes one normalized 1024‑D vector, and so does every query. Search is just `cosine(query, candidate)` over Qdrant's HNSW index, with a `modality` payload index for filtering. Because ImageBind has a mild **modality gap** (same‑modality vectors cluster a little tighter), the default search pulls the best of *each* modality and merges — so the result grid is a true cross‑modal mix, not all text.
 
 ---
 
-## What's in the box
+## Tech stack
 
-- **`backend/`** — FastAPI service. REST + SSE on port 8000. Auth, ingest, search, collections, streams.
-- **`workers/`** — Celery workers. Embedding jobs, async indexing, batch ingest.
-- **`frontend/`** — Next.js app. Landing page + dashboard (`/dashboard/search`, `/dashboard/upload`).
-- **`docs/handbook/`** — Quickstart, API Reference, Deploy Guide, Cookbook.
-- **`docker-compose.yml`** — One-shot dev + prod stack: backend, workers, Qdrant, Postgres, Redis, MinIO (optional).
+| Layer | Choice | Why |
+|---|---|---|
+| Embeddings | **ImageBind‑Huge** (1024‑D) | one model, six modalities, one shared space — beats stitching CLIP + CLAP |
+| Vector DB | **Qdrant Cloud** — HNSW (M=16, ef=200) + **int8** scalar quant | fast ANN, payload filtering, ~4× RAM win at ~0.98 recall |
+| Object store | **Backblaze B2** (S3‑compatible) | free 10 GB tier, no card; `boto3` works unchanged via an endpoint URL |
+| API | **FastAPI** + Pydantic v2 | async, OpenAPI for free, multipart query (text/image/audio/video) |
+| Cache | **Redis** (optional) | caches text‑query responses; degrades gracefully if absent |
+| Frontend | **Next.js** + Tailwind | landing + search dashboard |
+| Embedding host | **rented GPU** (one‑time) | ImageBind‑Huge is 4.5 GB + GPU‑hungry; used to bulk‑embed, then released |
 
 ---
 
-## Quick start
+## Run it locally
+
+ImageBind‑Huge (~4.5 GB weights, GPU‑hungry) can't run on a free web host, so Synapse runs **locally** and reads from the same hosted Qdrant + B2.
 
 ```bash
 git clone https://github.com/akshttdev/synapse.git
 cd synapse
-cp .env.example .env
-docker compose up -d
+cp .env.example .env        # fill B2 keys + Qdrant Cloud URL/key (see comments)
+docker compose -f docker-compose.serve.yml up --build
 ```
 
-First boot pulls images and downloads the ImageBind weights (~3 GB). Then:
+That brings up:
+
+- **Backend** on `:8000` (FastAPI + ImageBind on CPU for query embedding) + **Redis** for caching
+- **Frontend** on `:3000`
+
+First boot downloads the ImageBind weights once (cached in a volume). Then open **http://localhost:3000** and search.
+
+> The data is already populated in Qdrant Cloud + B2. To rebuild it from scratch on a GPU box, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#rebuilding-the-index).
+
+---
+
+## API
+
+All endpoints under `/api/v1`. OpenAPI at `http://localhost:8000/docs`.
 
 ```bash
-# Ingest something
-curl -X POST http://localhost:8000/v1/ingest \
-  -F "file=@./sample.jpg" \
-  -F 'metadata={"tag":"sample"}'
+# Text → all modalities (balanced cross-modal mix)
+curl -X POST http://localhost:8000/api/v1/search -F text="ocean waves" -F top_k=20
 
-# Query across all modalities
-curl -X POST http://localhost:8000/v1/search \
-  -H "content-type: application/json" \
-  -d '{ "text": "a sunny garden", "k": 10 }'
+# Image → all modalities
+curl -X POST http://localhost:8000/api/v1/search -F image_file=@cat.jpg -F top_k=20
+
+# Restrict results to one modality (e.g. only audio)
+curl -X POST http://localhost:8000/api/v1/search \
+  -F text="thunderstorm" \
+  -F 'filters={"must":[{"key":"modality","match":{"value":"audio"}}]}'
 ```
 
-Full walkthrough in [`docs/handbook/quickstart.md`](./docs/handbook/quickstart.md).
+Returns `{ results: [{ id, score, modality, thumbnail_url, preview_url, metadata }], latency_ms, … }`. Media URLs are short‑lived **presigned B2** links.
 
 ---
 
-## More API examples
+## Performance & scale (this build)
 
-**Cross-modal: query with audio, get back images.**
-```bash
-curl -X POST http://localhost:8000/v1/search \
-  -F "audio=@./bird-call.wav" \
-  -F 'filter={"modality":"image"}' \
-  -F 'k=20'
-```
+Measured against the live demo index — honest numbers, not synthetic benchmarks:
 
-**Hybrid: vector + metadata.**
-```json
-{
-  "text": "calm electronic music",
-  "k": 25,
-  "filter": {
-    "modality": "audio",
-    "metadata.bpm": { "lte": 110 },
-    "metadata.tag": { "any": ["ambient", "lofi"] }
-  }
-}
-```
-
-**MMR rerank** — trade some similarity for diversity:
-```json
-{ "text": "vintage cameras", "k": 30, "rerank": "mmr", "rerank_lambda": 0.3 }
-```
-
-**Streaming ingest events** via SSE at `/v1/stream`:
-```
-event: indexed
-data: { "id": "01HXYZ...", "modality": "image", "ms": 38 }
-```
-
----
-
-## Stack
-
-| Layer | Tech |
+| Fact | Value |
 |---|---|
-| Embedding | **ImageBind** — shared 1024-D space across image / audio / video / text |
-| Vector index | **Qdrant** — HNSW (M=16, ef=128) + int8 quantization |
-| API | **FastAPI** — REST + SSE, OpenAPI 3.1 at `/v1/openapi.json` |
-| Workers | **Celery** + **Redis** broker |
-| Metadata | **Postgres** |
-| Storage | **MinIO** (dev) / S3 / GCS / R2 (prod) |
-| Frontend | **Next.js 16** + **Tailwind v4** + **GSAP** + **Lenis** |
-| Deploy | **Docker Compose** — single-node or sharded; Terraform refs for AWS + GCP |
+| Indexed vectors | **5,712** (≈3,516 image · 1,640 audio · ~556 text · ~120 video) |
+| Distinct subjects | **293** |
+| Vector dim / metric | 1024 / cosine, int8 quantized |
+| Qdrant k‑NN latency | sub‑100 ms (tiny index; HNSW + int8) |
+| Dominant query cost | **the ImageBind embed** — fast on GPU, a few seconds on CPU |
+| Storage | media in B2 (~5–6 GB), vectors in Qdrant Cloud (well under 1 GB quantized) |
+
+A text query runs **one** embed + **four** filtered Qdrant queries (one per modality) and merges. The backend is stateless and reads from hosted Qdrant + B2, so it scales horizontally; the real bottleneck is GPU availability for embedding.
 
 ---
 
-## Configuration
+## Design decisions & tradeoffs
 
-All config is via `.env`. The interesting knobs:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `SYNAPSE_AUTH` | `open` | `required` to enforce bearer tokens on every request |
-| `SYNAPSE_RATE_LIMIT` | `none` | e.g. `100/min` to enable token-bucket rate limiting |
-| `QDRANT_NODES` | `qdrant:6333` | comma-separated list for sharded deploys |
-| `WORKER_REPLICAS` | `4` | Celery worker process count |
-| `EMBED_MODEL` | `imagebind/huge` | encoder used; pluggable |
-| `EMBED_BATCH` | `32` | embedding batch size per worker tick |
-| `QUANTIZATION` | `int8` | `int8` (4× RAM win, ~0.98 recall) or `none` |
-| `MAX_UPLOAD_MB` | `128` | rejected above this |
-| `S3_BUCKET` | `synapse-assets` | object store for raw files |
-
-Full reference in [`docs/handbook/deploy.md`](./docs/handbook/deploy.md).
+- **One shared space, one collection.** ImageBind makes all modalities comparable, so per‑modality collections would only add N query paths and block cross‑modal recall. We use a single Qdrant collection with a `modality` payload index.
+- **int8 quantization.** ~4× RAM reduction at ~0.98 recall@10 vs float32 — the right call at this scale.
+- **Balanced retrieval over raw top‑k.** Works around ImageBind's modality gap so the grid shows a real mix instead of all text.
+- **B2 + Qdrant Cloud, not AWS.** Built under a hard "no credit card / free‑tier only" constraint — both are free and S3/standard‑compatible, so the code is provider‑agnostic via one endpoint variable.
+- **GPU for ingest, CPU for serving.** The GPU is rented only to bulk‑embed; serving runs the model on CPU (slower per query, but free and self‑hostable).
+- **Snapshot to object storage.** Free‑tier vector clusters can be reclaimed — `snapshot.py`/`restore.py` keep a full vector dump in B2 so the index is always recoverable.
+- **pytorchvideo‑free video.** Video is embedded by ffmpeg frame‑sampling + mean‑pooling into the vision space, sidestepping a notoriously fragile dependency on Python 3.12.
 
 ---
 
-## Handbook
+## Limitations (honest)
 
-The product handbook lives in [`docs/handbook/`](./docs/handbook):
-
-- [**Quickstart**](./docs/handbook/quickstart.md) — get running in ~60 seconds
-- [**API Reference**](./docs/handbook/api-reference.md) — every endpoint, every knob
-- [**Deploy Guide**](./docs/handbook/deploy.md) — self-host, cloud, hybrid
-- [**Cookbook**](./docs/handbook/cookbook.md) — reverse image search, hybrid filters, streaming ingest, MMR rerank
-
----
-
-## Performance
-
-Benchmarked on a single-node deployment with 1M vectors at 1024-D, int8 quantized, on a modest GPU box:
-
-| Metric | Value |
-|---|---|
-| P50 query | ~30 ms |
-| P99 query | < 90 ms |
-| Index size | ~12 GB RAM / 50M vectors |
-| Recall @ 10 (vs float32) | ~0.98 |
-| Embedding throughput | 32 items/batch · GPU |
-| Cold start (first request) | ~200 ms (model warmup) |
-
-Scale notes:
-
-- **Backend is stateless** — scale on RPS, no session affinity needed.
-- **Qdrant** holds ~50M int8 vectors at 1024-D in ~12 GB RAM per node. Shard across nodes for bigger workloads.
-- **Workers** are GPU-bound for embedding. Adding GPU nodes scales throughput linearly; upping concurrency on a single GPU does not.
-- **Postgres + Redis** are tiny — small instances suffice.
+- Serving needs the 4.5 GB model locally — there's no free GPU host for it, so this is a **run‑locally / record‑a‑demo** project, not a hosted SaaS.
+- CPU query embedding is a few seconds; the snappy version needs a GPU.
+- Demo‑scale dataset (thousands, not millions) — chosen to fit free tiers.
+- Audio is capped to ESC‑50's 50 sound classes (the only keyless labelled audio source); images/text are far broader.
 
 ---
 
@@ -186,68 +153,22 @@ Scale notes:
 
 ```
 synapse/
-├── backend/              # FastAPI app
-│   ├── core/             # config, auth, db, logging
-│   ├── api/              # v1 routers (ingest, search, collections, stream)
-│   └── services/         # embedding orchestration, qdrant client
-├── workers/              # Celery workers
-│   ├── celery_app.py     # broker + beat schedule
-│   └── tasks/            # embedding_tasks.py, ingest_tasks.py
-├── frontend/             # Next.js 16 app
-│   ├── app/
-│   │   ├── page.tsx            # landing
-│   │   └── dashboard/
-│   │       ├── search/page.tsx # dashboard search
-│   │       └── upload/page.tsx # dashboard upload
-│   ├── components/             # sections, motion, icons, ui
-│   └── lib/                    # mockData, lenis bridge, burst system
-├── docs/
-│   └── handbook/         # quickstart, api, deploy, cookbook
-└── docker-compose.yml
+├── backend/                    # FastAPI app
+│   ├── api/                    # routes: search, upload, media, stats, health
+│   ├── core/                   # config, embeddings (ImageBind), qdrant, storage (S3/B2), cache, metrics
+│   └── services/               # search_service (balanced cross-modal), upload_service
+├── scripts/
+│   ├── demo_dataset/           # fetch_aligned.py (dataset) + build_index.py (GPU embed → B2 + Qdrant)
+│   └── qdrant/                 # create_collection.py · snapshot.py · restore.py
+├── frontend/                   # Next.js app (landing + search)
+├── docker-compose.serve.yml    # local serving stack (backend + redis + frontend)
+└── docs/ARCHITECTURE.md        # deep dive
 ```
 
 ---
 
-## Troubleshooting
+## License & credits
 
-**`docker compose up` hangs on the workers service.** First boot downloads ImageBind weights (~3 GB). Tail `docker compose logs -f workers` — you should see `Downloading: 100%`. After the first boot they're cached.
-
-**Queries return 503.** Probably the embedding worker hasn't warmed up yet. Hit `/health` — once it returns `embedder: "ready"`, queries will land.
-
-**HEIC images get rejected at ingest.** ImageBind ships without a HEIC decoder. Convert to jpg/png before upload, or add a preprocessor in front of the ingest endpoint.
-
-**Audio > 30 s gets chunked.** Synapse splits into 10 s windows and stores one vector per window. Search returns the best-scoring window plus a `timestamp` in metadata.
-
-**Recall feels low after int8.** Default is `int8` (~4× RAM win, ~0.98 recall @ 10 vs float32). For higher recall, set `QUANTIZATION=none` — pay the 4× RAM cost.
-
-**Force-pushed history doesn't show on a teammate's clone.** They need `git fetch && git reset --hard origin/main` (or a fresh clone) to pick up rewritten history.
-
----
-
-## Roadmap
-
-- [ ] First-class video embedding (currently chunk-and-pool)
-- [ ] Per-collection model overrides (CLIP, OpenCLIP, custom)
-- [ ] Dashboard analytics (query latency, cache hit rate)
-- [ ] gRPC alongside REST
-- [ ] Terraform modules in `infra/aws` and `infra/gcp`
-- [ ] Helm chart for Kubernetes
-- [ ] First-party Python + TypeScript SDKs (generated from OpenAPI)
-
----
-
-## Contributing
-
-PRs welcome. Open an issue first for anything bigger than a small fix or doc tweak. The cookbook ([`docs/handbook/cookbook.md`](./docs/handbook/cookbook.md)) is a great place to add recipes.
-
-Run the dev stack with `docker compose up -d` and the frontend with `cd frontend && npm run dev` for hot reload. Tests: `pytest backend/` and `cd frontend && npm test`.
-
----
-
-## License
-
-MIT — see [`LICENSE`](./LICENSE).
-
----
+MIT — see [`LICENSE`](LICENSE). ImageBind © Meta AI (CC‑BY‑NC 4.0 weights, research/demo use). ESC‑50 © Karol Piczak (CC BY‑NC). Images via Pixabay & Wikimedia Commons; text via Wikipedia.
 
 Built by [Akshat Dhami](https://x.com/akshttdev) · [LinkedIn](https://www.linkedin.com/in/akshatdhami/) · [Contact](mailto:akshttt.dev@gmail.com)
