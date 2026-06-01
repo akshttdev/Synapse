@@ -44,8 +44,9 @@ COPY backend/ /app/
 COPY workers/ /app/workers/
 COPY scripts/ /app/scripts/
 
-# ImageBind's text tokenizer loads "bpe/..." relative to CWD (/app). Make it resolve.
-RUN cp -r /opt/ImageBind/bpe /app/bpe
+# ImageBind's text tokenizer loads "bpe/..." relative to CWD (/app). The vocab
+# lives inside the package (imagebind/bpe/); fall back to repo root just in case.
+RUN cp -r /opt/ImageBind/imagebind/bpe /app/bpe 2>/dev/null || cp -r /opt/ImageBind/bpe /app/bpe
 
 # Default data dirs (compose mounts ./data over this).
 RUN mkdir -p /app/data/uploads /app/data/embeddings /app/data/thumbnails

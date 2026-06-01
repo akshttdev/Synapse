@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  demoResults,
   modalityColors,
   type Modality,
   type ResultCardData,
 } from '@/lib/mockData';
+import { searchSynapse } from '@/lib/api';
 
 type FilterKey = 'all' | Modality;
 type SortKey = 'score' | 'recent';
@@ -32,12 +31,6 @@ const MODE_PLACEHOLDER: Record<Exclude<InputMode, 'text'>, string> = {
   video: 'Drop a video or click to pick · mp4 · mov · webm',
 };
 
-const ALL_RESULTS: ResultCardData[] = [
-  ...demoResults,
-  ...demoResults.map((r, i) => ({ ...r, id: `${r.id}-b`, score: Math.max(0.5, r.score - 0.06 - i * 0.02) })),
-  ...demoResults.map((r, i) => ({ ...r, id: `${r.id}-c`, score: Math.max(0.4, r.score - 0.13 - i * 0.015) })),
-];
-
 export default function DashboardSearch() {
   const [mode, setMode] = useState<InputMode>('text');
   const [query, setQuery] = useState('thunderstorm');
@@ -45,9 +38,13 @@ export default function DashboardSearch() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
-  const [k, setK] = useState(50);
-  const [mmr, setMmr] = useState(false);
+  const [k, setK] = useState(40);
   const [sort, setSort] = useState<SortKey>('score');
+
+  const [results, setResults] = useState<ResultCardData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
   // Object URL for the image/video preview chip (revoked on change/unmount)
   const previewUrl = useMemo(() => {
@@ -72,6 +69,35 @@ export default function DashboardSearch() {
     setFile(null);
   };
 
+  // --- the live search call ---------------------------------------------
+  const run = useCallback(
+    async () => {
+      if (mode === 'text' && !query.trim()) return;
+      if (mode !== 'text' && !file) return;
+      setLoading(true);
+      setError(null);
+      try {
+        // Always fetch a balanced cross-modal pool; the modality pills filter
+        // it CLIENT-SIDE, so switching modality is instant (no re-query).
+        const out = await searchSynapse({ mode, query, file, topK: k, modality: 'all' });
+        setResults(out.results);
+        setLatencyMs(out.latencyMs);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Search failed');
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [mode, query, file, k],
+  );
+
+  // Run a default query on first load so the page isn't empty.
+  useEffect(() => {
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const queryLabel =
     mode === 'text'
       ? `"${query || '…'}"`
@@ -79,47 +105,45 @@ export default function DashboardSearch() {
         ? file.name
         : `(${mode} not selected)`;
 
-  const filtered = useMemo(() => {
-    let list = filter === 'all' ? ALL_RESULTS : ALL_RESULTS.filter((r) => r.modality === filter);
-    if (sort === 'score') list = [...list].sort((a, b) => b.score - a.score);
-    return list;
-  }, [filter, sort]);
+  const sorted = useMemo(() => {
+    const base = filter === 'all' ? results : results.filter((r) => r.modality === filter);
+    if (sort === 'score') return [...base].sort((a, b) => b.score - a.score);
+    return base; // backend order ≈ recency for our purposes
+  }, [results, sort, filter]);
 
   const breakdown = useMemo(() => {
     const counts: Record<Modality, number> = { image: 0, audio: 0, video: 0, text: 0 };
-    filtered.forEach((r) => (counts[r.modality] += 1));
+    results.forEach((r) => (counts[r.modality] += 1));
     return counts;
-  }, [filtered]);
+  }, [results]);
 
   // Lazy-load result cards in batches as the user scrolls.
-  const BATCH = 6;
+  const BATCH = 8;
   const [visibleCount, setVisibleCount] = useState(BATCH);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Reset visible count whenever the filter or sort changes the result set.
   useEffect(() => {
     setVisibleCount(BATCH);
-  }, [filter, sort]);
+  }, [sorted]);
 
-  // Reveal more results when the sentinel scrolls into view.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
-    if (visibleCount >= filtered.length) return;
+    if (visibleCount >= sorted.length) return;
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setVisibleCount((c) => Math.min(c + BATCH, filtered.length));
+          setVisibleCount((c) => Math.min(c + BATCH, sorted.length));
         }
       },
       { rootMargin: '300px 0px' },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [visibleCount, filtered.length]);
+  }, [visibleCount, sorted.length]);
 
-  const visible = filtered.slice(0, visibleCount);
-  const hasMore = visibleCount < filtered.length;
+  const visible = sorted.slice(0, visibleCount);
+  const hasMore = visibleCount < sorted.length;
 
   return (
     <div className="px-6 md:px-10 py-8 md:py-10 font-mono">
@@ -133,7 +157,7 @@ export default function DashboardSearch() {
           </h1>
         </div>
         <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#0a0a0c]/45 max-w-md text-right truncate">
-          k = {k} · {mode} input · {queryLabel} · {mmr ? 'mmr · λ=0.3' : 'no rerank'}
+          k = {k} · {mode} input · {queryLabel}
         </span>
       </div>
 
@@ -170,7 +194,7 @@ export default function DashboardSearch() {
 
         {/* Input row — text input OR file dropzone */}
         {mode === 'text' ? (
-          <div className="flex items-center gap-3 pl-5 pr-1.5 py-1.5">
+          <div className="flex items-center gap-3 pl-5 pr-1.5 py-1.5" suppressHydrationWarning>
             <svg
               className="w-5 h-5 text-[#0a0a0c]/50 shrink-0"
               viewBox="0 0 24 24"
@@ -187,14 +211,19 @@ export default function DashboardSearch() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') run();
+              }}
               placeholder="text query · e.g. thunderstorm at night"
               className="flex-1 font-mono text-[14px] leading-none bg-transparent outline-none placeholder:text-[#0a0a0c]/35"
             />
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563eb] text-white px-5 py-3 text-[12px] font-mono uppercase tracking-[0.18em] hover:bg-[#1d4ed8] transition-colors"
+              onClick={() => run()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563eb] text-white px-5 py-3 text-[12px] font-mono uppercase tracking-[0.18em] hover:bg-[#1d4ed8] transition-colors disabled:opacity-50"
             >
-              Run →
+              {loading ? 'Running…' : 'Run →'}
             </button>
           </div>
         ) : (
@@ -209,6 +238,7 @@ export default function DashboardSearch() {
               setDragOver(true);
             }}
             onDragLeave={() => setDragOver(false)}
+            suppressHydrationWarning
             className={`flex items-center gap-3 pl-5 pr-1.5 py-3 transition-colors ${
               dragOver ? 'bg-[#2563eb]/[0.05]' : ''
             }`}
@@ -272,55 +302,50 @@ export default function DashboardSearch() {
             )}
             <button
               type="button"
-              disabled={!file}
+              onClick={() => run()}
+              disabled={!file || loading}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563eb] text-white px-5 py-3 text-[12px] font-mono uppercase tracking-[0.18em] hover:bg-[#1d4ed8] transition-colors disabled:bg-[#0a0a0c]/20 disabled:hover:bg-[#0a0a0c]/20"
             >
-              Run →
+              {loading ? 'Running…' : 'Run →'}
             </button>
           </div>
         )}
         <div className="flex items-center justify-between flex-wrap gap-4 px-5 py-3 border-t border-[#0a0a0c]/8 bg-[#f6f5f0]/40">
-          <div className="flex items-center gap-5 flex-wrap">
-            <label className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#0a0a0c]/65">
-              <span>k</span>
-              <input
-                type="range"
-                min={10}
-                max={100}
-                step={10}
-                value={k}
-                onChange={(e) => setK(Number(e.target.value))}
-                className="w-32 accent-[#2563eb]"
-              />
-              <span className="font-mono text-[11px] text-[#0a0a0c] w-7 text-right">{k}</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => setMmr((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[10px] uppercase tracking-[0.18em] border transition-colors ${
-                mmr
-                  ? 'bg-[#0a0a0c] text-white border-[#0a0a0c]'
-                  : 'bg-white text-[#0a0a0c]/65 border-[#0a0a0c]/15 hover:border-[#0a0a0c]/40'
-              }`}
-            >
-              MMR Rerank
-            </button>
-          </div>
+          <label className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#0a0a0c]/65">
+            <span>k</span>
+            <input
+              type="range"
+              min={8}
+              max={80}
+              step={4}
+              value={k}
+              onChange={(e) => setK(Number(e.target.value))}
+              className="w-32 accent-[#2563eb]"
+            />
+            <span className="font-mono text-[11px] text-[#0a0a0c] w-7 text-right">{k}</span>
+          </label>
           <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.22em] text-[#0a0a0c]/55">
-            <span>↳ 28ms · {filtered.length} results</span>
+            <span>
+              ↳ {loading ? '…' : latencyMs != null ? `${latencyMs.toFixed(0)}ms` : '—'} ·{' '}
+              {results.length} results
+            </span>
             <span className="text-[#0a0a0c]/30">|</span>
             <span>cosine · int8</span>
           </div>
         </div>
       </div>
 
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 font-mono text-[11px] text-red-700">
+          {error}
+        </div>
+      )}
+
       <div className="mt-6 flex flex-wrap items-center gap-2">
         {(['all', 'image', 'audio', 'video', 'text'] as const).map((m) => {
           const active = filter === m;
           const isAll = m === 'all';
-          const count = isAll
-            ? ALL_RESULTS.length
-            : ALL_RESULTS.filter((r) => r.modality === m).length;
+          const count = isAll ? results.length : breakdown[m as Modality];
           return (
             <button
               key={m}
@@ -371,40 +396,37 @@ export default function DashboardSearch() {
         ))}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {visible.map((r) => (
-          <ResultCard key={r.id} r={r} />
-        ))}
-      </div>
+      {loading && results.length === 0 ? (
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="aspect-[4/3] rounded-xl bg-[#0a0a0c]/5 animate-pulse border border-[#0a0a0c]/8"
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {visible.map((r) => (
+            <ResultCard key={r.id} r={r} />
+          ))}
+        </div>
+      )}
 
-      {/* Sentinel — IntersectionObserver fires when this scrolls into view */}
       {hasMore && (
         <div
           ref={sentinelRef}
           className="mt-8 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#0a0a0c]/45"
         >
-          Loading {Math.min(BATCH, filtered.length - visibleCount)} more…
+          Loading {Math.min(BATCH, sorted.length - visibleCount)} more…
         </div>
       )}
 
-      {filtered.length === 0 && (
+      {!loading && results.length === 0 && !error && (
         <div className="mt-12 text-center font-mono text-[11px] uppercase tracking-[0.22em] text-[#0a0a0c]/45">
-          No Results · Try Clearing Filters
+          No Results · Try Another Query
         </div>
       )}
-
-      <div className="mt-10 flex items-center justify-between font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#0a0a0c]/55">
-        <span>Showing 1 — {visible.length} of {filtered.length}</span>
-        <div className="flex items-center gap-1">
-          <button className="px-3 py-1.5 rounded border border-[#0a0a0c]/15 bg-white text-[#0a0a0c]/30 cursor-not-allowed">
-            ← Prev
-          </button>
-          <span className="px-3 py-1.5 rounded bg-[#0a0a0c] text-white">1</span>
-          <button className="px-3 py-1.5 rounded border border-[#0a0a0c]/15 bg-white hover:border-[#0a0a0c]/40 text-[#0a0a0c] transition-colors">
-            Next →
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -428,13 +450,14 @@ function ResultCard({ r }: { r: ResultCardData }) {
       </div>
 
       {r.modality === 'image' && (
-        <div className="relative aspect-[4/3]">
-          <Image src={r.thumb} alt="" fill sizes="320px" className="object-cover" />
-        </div>
+        <a href={r.src || r.thumb} target="_blank" rel="noreferrer" className="block relative aspect-[4/3] bg-[#0a0a0c]/5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={r.thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        </a>
       )}
       {r.modality === 'audio' && (
         <div className="aspect-[4/3] bg-[#fef0f6] p-4 flex flex-col justify-end">
-          <div className="flex items-end gap-[2px] h-24 mb-3">
+          <div className="flex items-end gap-[2px] h-20 mb-3">
             {r.peaks.map((p, i) => (
               <span
                 key={i}
@@ -448,25 +471,20 @@ function ResultCard({ r }: { r: ResultCardData }) {
               />
             ))}
           </div>
-          <div className="flex justify-between font-mono text-[10px] text-[#0a0a0c]/60">
-            <span>00:00</span>
-            <span>{r.duration.toFixed(1)}s</span>
-          </div>
+          {r.src && (
+            <audio src={r.src} controls preload="none" className="w-full h-8" />
+          )}
         </div>
       )}
       {r.modality === 'video' && (
-        <div className="relative aspect-[4/3]">
-          <Image src={r.poster} alt="" fill sizes="320px" className="object-cover" />
-          <div className="absolute inset-0 grid place-items-center">
-            <div className="w-11 h-11 rounded-full bg-white/95 grid place-items-center shadow-md">
-              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
-                <path d="M3 1.5L11.5 7L3 12.5V1.5Z" fill="#0a0a0c" />
-              </svg>
-            </div>
-          </div>
-          <div className="absolute bottom-3 right-3 rounded bg-black/70 px-1.5 py-0.5">
-            <span className="font-mono text-[10px] text-white">{r.duration.toFixed(1)}s</span>
-          </div>
+        <div className="relative aspect-[4/3] bg-black">
+          <video
+            src={r.src}
+            poster={r.poster || undefined}
+            controls
+            preload="none"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
         </div>
       )}
       {r.modality === 'text' && (
@@ -477,12 +495,12 @@ function ResultCard({ r }: { r: ResultCardData }) {
         </div>
       )}
 
-      <div className="px-3 py-2.5 border-t border-[#0a0a0c]/8 flex items-center justify-between">
+      <div className="px-3 py-2.5 border-t border-[#0a0a0c]/8 flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] text-[#0a0a0c]/55 uppercase tracking-wider truncate">
           {'credit' in r ? r.credit : r.source}
         </span>
-        <span className="font-mono text-[9.5px] text-[#0a0a0c]/35 uppercase tracking-[0.2em]">
-          {r.id}
+        <span className="font-mono text-[9.5px] text-[#0a0a0c]/35 uppercase tracking-[0.2em] shrink-0">
+          {r.id.slice(0, 8)}
         </span>
       </div>
     </article>

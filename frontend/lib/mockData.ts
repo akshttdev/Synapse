@@ -1,10 +1,10 @@
 export type Modality = 'image' | 'audio' | 'video' | 'text';
 
 export type ResultCardData =
-  | { id: string; modality: 'image'; score: number; thumb: string; credit: string }
-  | { id: string; modality: 'audio'; score: number; peaks: number[]; duration: number; credit: string }
-  | { id: string; modality: 'video'; score: number; poster: string; duration: number; credit: string }
-  | { id: string; modality: 'text'; score: number; snippet: string; source: string };
+  | { id: string; modality: 'image'; score: number; thumb: string; credit: string; src?: string }
+  | { id: string; modality: 'audio'; score: number; peaks: number[]; duration: number; credit: string; src?: string }
+  | { id: string; modality: 'video'; score: number; poster: string; duration: number; credit: string; src?: string }
+  | { id: string; modality: 'text'; score: number; snippet: string; source: string; src?: string };
 
 export const demoQuery = 'thunderstorm';
 
