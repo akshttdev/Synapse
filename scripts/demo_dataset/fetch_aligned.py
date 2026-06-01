@@ -29,6 +29,8 @@ import argparse
 import csv
 import io
 import json
+import os
+import signal
 import sys
 import time
 import urllib.error
@@ -162,6 +164,62 @@ def _img_row(target: Path, cat, page: dict) -> Dict:
         "path": str(target), "modality": "image", "tag": cat.key,
         "title": page.get("title"), "source": "wikimedia_commons",
         "license": "CC", "url": info.get("descriptionurl"),
+    }
+
+
+def fetch_images_pixabay(out: Path, per_cat: int, workers: int, key: str) -> List[Dict]:
+    """Bulk images from Pixabay (free API key) — fast, no throttling pain."""
+    d = out / "image"
+    d.mkdir(parents=True, exist_ok=True)
+    rows: List[Dict] = []
+
+    def one_category(cat) -> List[Dict]:
+        local: List[Dict] = []
+        q = urllib.parse.urlencode({
+            "key": key, "q": cat.query, "image_type": "photo",
+            "per_page": max(3, min(per_cat, 200)), "safesearch": "true",
+        })
+        url = f"https://pixabay.com/api/?{q}"
+        try:
+            data = get_json(url)
+        except Exception as e:  # noqa: BLE001
+            log(f"  [image:{cat.key}] pixabay failed: {e}")
+            return local
+        got = 0
+        for hit in data.get("hits", []):
+            if got >= per_cat:
+                break
+            src = hit.get("largeImageURL") or hit.get("webformatURL")
+            if not src:
+                continue
+            target = d / f"{cat.key}_{hit.get('id', 'x')}.jpg"
+            if target.exists() and target.stat().st_size > 0:
+                got += 1
+                local.append(_img_row_pix(target, cat, hit))
+                continue
+            try:
+                blob = get_bytes(src, timeout=60.0)
+                if len(blob) < 2000:
+                    continue
+                target.write_bytes(blob)
+                got += 1
+                local.append(_img_row_pix(target, cat, hit))
+            except Exception:  # noqa: BLE001
+                continue
+        log(f"  [image:{cat.key}] {got}")
+        return local
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for f in as_completed([ex.submit(one_category, c) for c in ALL_VISUAL]):
+            rows.extend(f.result())
+    return rows
+
+
+def _img_row_pix(target: Path, cat, hit: dict) -> Dict:
+    return {
+        "path": str(target), "modality": "image", "tag": cat.key,
+        "title": cat.query, "source": "pixabay", "license": "Pixabay",
+        "url": hit.get("pageURL"),
     }
 
 
@@ -338,17 +396,22 @@ def fetch_video(out: Path, total: int) -> List[Dict]:
 # ------------------------------------------------------------------ driver
 
 def main() -> int:
+    # Make Ctrl-C kill instantly — the ThreadPoolExecutor otherwise blocks the
+    # default KeyboardInterrupt until all in-flight downloads drain.
+    signal.signal(signal.SIGINT, lambda *_: os._exit(130))
+
     ap = argparse.ArgumentParser(description="Fetch a keyless, cross-modal-aligned demo dataset.")
     ap.add_argument("--out", type=Path, default=Path("data/demo"))
     # Defaults sized to fill the B2 free tier (≈5-7 GB) with an image-heavy,
     # diverse, cross-modal set. Scale up/down with these flags.
     # ~140 distinct subjects (41 aligned + ~100 diverse). Fewer images each =
     # broad, not redundant. Bump --images-per-cat for more volume.
-    ap.add_argument("--images-per-cat", type=int, default=15)   # ~140*15 ≈ 2100 imgs
+    ap.add_argument("--images-per-cat", type=int, default=12)   # lean: breadth > depth
     ap.add_argument("--audio-per-cat", type=int, default=40)    # all ESC-50 clips/class
     ap.add_argument("--text-per-cat", type=int, default=2)
     ap.add_argument("--videos-total", type=int, default=160)
     ap.add_argument("--workers", type=int, default=3)  # gentle on Wikimedia's API
+    ap.add_argument("--pixabay-key", default=None, help="Pixabay API key (or set PIXABAY_API_KEY env)")
     ap.add_argument("--skip", default="", help="comma list of modalities to skip: image,audio,video,text")
     args = ap.parse_args()
 
@@ -358,7 +421,13 @@ def main() -> int:
     started = time.time()
 
     if "image" not in skip:
-        log("[image] Wikimedia Commons"); rows += fetch_images(args.out, args.images_per_cat, args.workers)
+        pix = args.pixabay_key or os.environ.get("PIXABAY_API_KEY")
+        if pix:
+            log("[image] Pixabay")
+            rows += fetch_images_pixabay(args.out, args.images_per_cat, args.workers, pix)
+        else:
+            log("[image] Wikimedia Commons (no Pixabay key)")
+            rows += fetch_images(args.out, args.images_per_cat, args.workers)
     if "audio" not in skip:
         log("[audio] ESC-50"); rows += fetch_audio(args.out, args.audio_per_cat)
     if "text" not in skip:

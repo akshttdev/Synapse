@@ -3,18 +3,17 @@ Categories + topics for the demo dataset.
 
 Two tiers:
 
-1. CATEGORIES — ~41 ESC-50 sound classes. These get ALL four modalities
-   (image + audio + video + text) so the cross-modal trick works: search a
-   thunder *sound* and get storm *photos*, etc. Audio is the limiter — ESC-50
-   is the only keyless labelled audio source, so the aligned set is capped here.
+1. CATEGORIES — ~41 ESC-50 sound classes. Get ALL four modalities
+   (image + audio + video + text) so cross-modal search works (search a sound,
+   get a photo). Audio is the limiter — ESC-50 is the only keyless labelled
+   audio source — so the aligned set is capped here.
 
-2. EXTRA_TOPICS — ~100 visually-rich subjects (food, landmarks, vehicles, wild
-   animals, instruments, sports, tech…). Image + text only (no audio/video).
-   These add breadth so search feels like "anything", without 50 near-duplicate
-   photos of one thing.
+2. EXTRA_TOPICS — ~200 visually-rich subjects. Image + text only. These add
+   breadth so search feels like "anything" — ~12 images each, not 100 of one
+   thing.
 
-ALL_VISUAL = CATEGORIES + EXTRA_TOPICS  → used for images & text.
-CATEGORIES alone → used for audio & video.
+ALL_VISUAL = CATEGORIES + EXTRA_TOPICS  → images & text.
+CATEGORIES alone → audio & video.
 """
 from __future__ import annotations
 
@@ -24,13 +23,12 @@ from typing import List
 
 @dataclass(frozen=True)
 class Category:
-    key: str       # slug / ESC-50 class name
-    query: str     # visual + text search phrase
-    wiki: str      # Wikipedia page title
+    key: str
+    query: str
+    wiki: str
 
 
 CATEGORIES: List[Category] = [
-    # animals
     Category("dog", "dog", "Dog"),
     Category("cat", "cat", "Cat"),
     Category("rooster", "rooster", "Rooster"),
@@ -43,7 +41,6 @@ CATEGORIES: List[Category] = [
     Category("chirping_birds", "songbird", "Bird"),
     Category("insects", "insect macro", "Insect"),
     Category("crickets", "cricket insect", "Cricket (insect)"),
-    # nature / water / weather
     Category("rain", "rain weather", "Rain"),
     Category("sea_waves", "ocean waves beach", "Wind wave"),
     Category("crackling_fire", "campfire flames", "Campfire"),
@@ -51,11 +48,9 @@ CATEGORIES: List[Category] = [
     Category("wind", "wind storm", "Wind"),
     Category("pouring_water", "pouring water glass", "Water"),
     Category("thunderstorm", "thunderstorm lightning", "Thunderstorm"),
-    # human actions
     Category("footsteps", "person walking", "Walking"),
     Category("clapping", "applause clapping hands", "Applause"),
     Category("laughing", "people laughing", "Laughter"),
-    # domestic / office
     Category("keyboard_typing", "computer keyboard", "Computer keyboard"),
     Category("mouse_click", "computer mouse", "Computer mouse"),
     Category("can_opening", "soda can", "Drink can"),
@@ -65,7 +60,6 @@ CATEGORIES: List[Category] = [
     Category("clock_tick", "wall clock", "Clock"),
     Category("glass_breaking", "broken glass", "Glass"),
     Category("door_wood_knock", "wooden door", "Door"),
-    # tools / vehicles / urban
     Category("hand_saw", "hand saw tool", "Saw"),
     Category("chainsaw", "chainsaw", "Chainsaw"),
     Category("helicopter", "helicopter", "Helicopter"),
@@ -78,58 +72,66 @@ CATEGORIES: List[Category] = [
     Category("fireworks", "fireworks display", "Fireworks"),
 ]
 
-# (search phrase, Wikipedia title) — image + text only, for breadth.
-EXTRA_TOPICS: List[tuple[str, str]] = [
+# Diverse image+text subjects (query strings; wiki title = same string, which
+# the summary API resolves via redirect/capitalisation — misses just skip text).
+EXTRA_TOPICS: List[str] = [
     # food & drink
-    ("pizza", "Pizza"), ("sushi", "Sushi"), ("hamburger", "Hamburger"),
-    ("pasta", "Pasta"), ("taco", "Taco"), ("ramen", "Ramen"),
-    ("ice cream", "Ice cream"), ("chocolate", "Chocolate"), ("coffee", "Coffee"),
-    ("cheese", "Cheese"), ("bread", "Bread"), ("strawberry", "Strawberry"),
-    ("watermelon", "Watermelon"), ("avocado", "Avocado"), ("cake", "Cake"),
-    # nature & places
-    ("mountain", "Mountain"), ("beach", "Beach"), ("desert", "Desert"),
-    ("forest", "Forest"), ("waterfall", "Waterfall"), ("volcano", "Volcano"),
-    ("canyon", "Canyon"), ("glacier", "Glacier"), ("coral reef", "Coral reef"),
-    ("aurora", "Aurora"), ("rainbow", "Rainbow"), ("snowflake", "Snowflake"),
+    "pizza", "sushi", "hamburger", "pasta", "taco", "ramen", "ice cream",
+    "chocolate", "coffee", "cheese", "bread", "strawberry", "watermelon",
+    "avocado", "cake", "donut", "pancake", "popcorn", "lemon", "grapes",
+    "pineapple", "mango", "broccoli", "steak", "cookie", "honey", "cupcake",
+    "salad", "noodles", "wine",
+    # wild & zoo animals
+    "tiger", "lion", "elephant", "giraffe", "panda", "kangaroo", "penguin",
+    "owl", "eagle", "dolphin", "whale", "shark", "octopus", "jellyfish",
+    "butterfly", "snake", "turtle", "fox", "wolf", "bear", "deer", "horse",
+    "zebra", "flamingo", "peacock", "rabbit", "squirrel", "hedgehog", "otter",
+    "seal", "polar bear", "leopard", "cheetah", "rhinoceros", "hippopotamus",
+    "gorilla", "monkey", "sloth", "camel", "llama", "duck", "swan", "crab",
+    "lobster", "starfish", "seahorse", "spider", "ladybug", "dragonfly",
+    # plants & flowers
+    "sunflower", "rose", "tulip", "cactus", "bamboo", "mushroom", "palm tree",
+    "maple leaf", "daisy", "lily", "lotus", "dandelion", "fern", "pine tree",
+    "cherry blossom", "autumn leaves", "lavender", "orchid", "succulent",
+    # places & nature
+    "mountain", "beach", "desert", "forest", "waterfall", "volcano", "canyon",
+    "glacier", "coral reef", "aurora", "rainbow", "meadow", "valley", "cliff",
+    "cave", "lake", "river", "island", "vineyard", "harbor", "geyser",
+    "hot spring", "fjord", "sand dune", "snow",
     # landmarks
-    ("Eiffel Tower", "Eiffel Tower"), ("Great Wall of China", "Great Wall of China"),
-    ("Taj Mahal", "Taj Mahal"), ("Colosseum", "Colosseum"),
-    ("Statue of Liberty", "Statue of Liberty"), ("Mount Fuji", "Mount Fuji"),
-    ("Golden Gate Bridge", "Golden Gate Bridge"), ("Sydney Opera House", "Sydney Opera House"),
-    ("pyramids of Giza", "Giza pyramid complex"), ("lighthouse", "Lighthouse"),
+    "Eiffel Tower", "Great Wall of China", "Taj Mahal", "Colosseum",
+    "Statue of Liberty", "Mount Fuji", "Golden Gate Bridge",
+    "Sydney Opera House", "lighthouse", "Leaning Tower of Pisa", "Stonehenge",
+    "Machu Picchu", "Christ the Redeemer", "Burj Khalifa", "Tower Bridge",
     # vehicles
-    ("bicycle", "Bicycle"), ("motorcycle", "Motorcycle"), ("sports car", "Sports car"),
-    ("bus", "Bus"), ("sailboat", "Sailboat"), ("submarine", "Submarine"),
-    ("rocket", "Rocket"), ("tractor", "Tractor"), ("hot air balloon", "Hot air balloon"),
-    ("cruise ship", "Cruise ship"), ("skateboard", "Skateboard"),
-    # wild animals
-    ("tiger", "Tiger"), ("lion", "Lion"), ("elephant", "Elephant"),
-    ("giraffe", "Giraffe"), ("panda", "Giant panda"), ("kangaroo", "Kangaroo"),
-    ("penguin", "Penguin"), ("owl", "Owl"), ("eagle", "Eagle"),
-    ("dolphin", "Dolphin"), ("whale", "Whale"), ("shark", "Shark"),
-    ("octopus", "Octopus"), ("jellyfish", "Jellyfish"), ("butterfly", "Butterfly"),
-    ("snake", "Snake"), ("turtle", "Turtle"), ("fox", "Fox"),
-    ("wolf", "Wolf"), ("bear", "Bear"), ("deer", "Deer"),
-    ("horse", "Horse"), ("zebra", "Zebra"), ("flamingo", "Flamingo"),
-    ("peacock", "Peafowl"),
-    # plants
-    ("sunflower", "Sunflower"), ("rose", "Rose"), ("tulip", "Tulip"),
-    ("cactus", "Cactus"), ("bamboo", "Bamboo"), ("mushroom", "Mushroom"),
-    ("palm tree", "Arecaceae"), ("maple leaf", "Maple"),
+    "bicycle", "motorcycle", "sports car", "bus", "sailboat", "submarine",
+    "rocket", "tractor", "hot air balloon", "cruise ship", "skateboard",
+    "tram", "ambulance", "fire truck", "taxi", "jeep", "excavator", "crane",
+    "canoe", "kayak", "ferry", "fighter jet", "scooter", "truck",
     # sports
-    ("soccer", "Association football"), ("basketball", "Basketball"),
-    ("tennis", "Tennis"), ("baseball", "Baseball"), ("surfing", "Surfing"),
-    ("skiing", "Skiing"), ("rock climbing", "Climbing"), ("yoga", "Yoga"),
-    ("boxing", "Boxing"), ("cycling", "Cycling"),
+    "soccer", "basketball", "tennis", "baseball", "surfing", "skiing",
+    "rock climbing", "yoga", "boxing", "cycling", "golf", "bowling", "diving",
+    "fishing", "hiking",
     # instruments
-    ("guitar", "Guitar"), ("piano", "Piano"), ("violin", "Violin"),
-    ("drum kit", "Drum kit"), ("trumpet", "Trumpet"), ("saxophone", "Saxophone"),
-    ("flute", "Flute"), ("harp", "Harp"),
+    "guitar", "piano", "violin", "drum kit", "trumpet", "saxophone", "flute",
+    "harp", "cello", "accordion",
     # tech & objects
-    ("robot", "Robot"), ("drone", "Unmanned aerial vehicle"), ("telescope", "Telescope"),
-    ("camera", "Camera"), ("lightbulb", "Incandescent light bulb"),
-    ("windmill", "Windmill"), ("solar panel", "Solar panel"), ("satellite", "Satellite"),
-    ("globe", "Globe"), ("hourglass", "Hourglass"),
+    "robot", "drone", "telescope", "camera", "lightbulb", "windmill",
+    "solar panel", "satellite", "globe", "hourglass", "headphones",
+    "microphone", "game controller", "smartwatch", "laptop", "printer",
+    "gears", "turbine", "battery", "lantern", "umbrella", "backpack",
+    "sunglasses", "key", "compass",
+    # architecture & scenes
+    "skyscraper", "staircase", "archway", "dome", "fountain", "alley",
+    "market", "library", "museum", "stadium", "airport", "train station",
+    "factory", "barn", "greenhouse",
+    # misc / abstract
+    "balloon", "kite", "origami", "graffiti", "mosaic", "stained glass",
+    "neon sign", "dice", "playing cards", "yarn", "candle", "mirror", "vase",
+    "teapot", "chessboard",
+    # nature phenomena & space
+    "lightning", "tornado", "eclipse", "galaxy", "nebula", "moon", "fog",
+    "frost", "icicle", "comet",
 ]
 
 
@@ -137,10 +139,14 @@ def _slug(s: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in s.lower()).strip("_")
 
 
-# Aligned + diverse, for image & text fetching.
-ALL_VISUAL: List[Category] = CATEGORIES + [
-    Category(_slug(q), q, w) for (q, w) in EXTRA_TOPICS
-]
+# Aligned + diverse, for image & text fetching. dedupe by slug.
+_seen = {c.key for c in CATEGORIES}
+ALL_VISUAL: List[Category] = list(CATEGORIES)
+for _t in EXTRA_TOPICS:
+    _k = _slug(_t)
+    if _k and _k not in _seen:
+        _seen.add(_k)
+        ALL_VISUAL.append(Category(_k, _t, _t))
 
 KEYS = [c.key for c in CATEGORIES]
 
