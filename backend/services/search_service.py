@@ -167,13 +167,15 @@ class SearchService:
         embed_ms: float,
     ) -> Dict:
         t0 = time.time()
-        results = self.qdrant.search(
+        # qdrant-client >=1.12 uses query_points() (the old .search() was removed
+        # in 1.16). .points is the list of ScoredPoint (id/score/payload).
+        results = self.qdrant.query_points(
             collection_name=self.collection,
-            query_vector=vec,
+            query=vec,
             limit=top_k,
             with_payload=True,
             query_filter=filters,  # qdrant-client tolerates a plain dict here
-        )
+        ).points
         search_ms = (time.time() - t0) * 1000
 
         out: List[Dict[str, Any]] = []

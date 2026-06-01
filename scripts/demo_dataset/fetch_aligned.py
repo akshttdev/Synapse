@@ -73,42 +73,52 @@ def log(msg: str) -> None:
 # ------------------------------------------------------------------ images
 
 def fetch_images(out: Path, per_cat: int, workers: int) -> List[Dict]:
+    """Category-relevant CC images from Wikimedia Commons — keyless (no token)."""
     d = out / "image"
     d.mkdir(parents=True, exist_ok=True)
     rows: List[Dict] = []
 
     def one_category(cat) -> List[Dict]:
         local_rows: List[Dict] = []
-        q = urllib.parse.urlencode(
-            {"q": cat.query, "page_size": min(per_cat * 2, 40),
-             "license_type": "commercial", "mature": "false"}
-        )
-        url = f"https://api.openverse.org/v1/images/?{q}"
+        q = urllib.parse.urlencode({
+            "action": "query", "format": "json",
+            "generator": "search",
+            "gsrsearch": f"{cat.query} filetype:bitmap",
+            "gsrnamespace": "6", "gsrlimit": min(per_cat, 200),
+            "prop": "imageinfo", "iiprop": "url|size|mime",
+            "iiurlwidth": "1600",   # scaled thumb url → reasonable file size
+        })
+        url = f"https://commons.wikimedia.org/w/api.php?{q}"
         try:
             data = get_json(url)
         except Exception as e:  # noqa: BLE001
             log(f"  [image:{cat.key}] search failed: {e}")
             return local_rows
+        pages = (data.get("query") or {}).get("pages", {})
         got = 0
-        for item in data.get("results", []):
+        for page in pages.values():
             if got >= per_cat:
                 break
-            src = item.get("url")
+            info = (page.get("imageinfo") or [{}])[0]
+            mime = info.get("mime", "")
+            if not mime.startswith("image/"):
+                continue
+            src = info.get("thumburl") or info.get("url")
             if not src:
                 continue
-            ext = ".jpg"
-            target = d / f"{cat.key}_{item.get('id','x')[:12]}{ext}"
+            ext = ".png" if "png" in mime else ".jpg"
+            target = d / f"{cat.key}_{abs(hash(src)) % 10**9}{ext}"
             if target.exists() and target.stat().st_size > 0:
                 got += 1
-                local_rows.append(_img_row(target, cat, item))
+                local_rows.append(_img_row(target, cat, page))
                 continue
             try:
-                blob = get_bytes(src, timeout=60.0)
-                if len(blob) < 2000:  # likely an error page / 1px
+                blob = get_bytes(src, timeout=90.0)
+                if len(blob) < 2000:
                     continue
                 target.write_bytes(blob)
                 got += 1
-                local_rows.append(_img_row(target, cat, item))
+                local_rows.append(_img_row(target, cat, page))
             except Exception:  # noqa: BLE001
                 continue
         log(f"  [image:{cat.key}] {got}")
@@ -121,12 +131,12 @@ def fetch_images(out: Path, per_cat: int, workers: int) -> List[Dict]:
     return rows
 
 
-def _img_row(target: Path, cat, item: dict) -> Dict:
+def _img_row(target: Path, cat, page: dict) -> Dict:
+    info = (page.get("imageinfo") or [{}])[0]
     return {
         "path": str(target), "modality": "image", "tag": cat.key,
-        "title": item.get("title"), "source": "openverse",
-        "credit": item.get("creator"), "license": item.get("license"),
-        "url": item.get("foreign_landing_url"),
+        "title": page.get("title"), "source": "wikimedia_commons",
+        "license": "CC", "url": info.get("descriptionurl"),
     }
 
 
@@ -296,10 +306,12 @@ def fetch_video(out: Path, total: int) -> List[Dict]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Fetch a keyless, cross-modal-aligned demo dataset.")
     ap.add_argument("--out", type=Path, default=Path("data/demo"))
-    ap.add_argument("--images-per-cat", type=int, default=20)
-    ap.add_argument("--audio-per-cat", type=int, default=20)
-    ap.add_argument("--text-per-cat", type=int, default=3)
-    ap.add_argument("--videos-total", type=int, default=60)
+    # Defaults sized to fill the B2 free tier (≈5-7 GB) with an image-heavy,
+    # diverse, cross-modal set. Scale up/down with these flags.
+    ap.add_argument("--images-per-cat", type=int, default=120)  # ~41*120 ≈ 4900 imgs
+    ap.add_argument("--audio-per-cat", type=int, default=40)    # all ESC-50 clips/class
+    ap.add_argument("--text-per-cat", type=int, default=6)
+    ap.add_argument("--videos-total", type=int, default=180)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--skip", default="", help="comma list of modalities to skip: image,audio,video,text")
     args = ap.parse_args()

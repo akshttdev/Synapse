@@ -25,8 +25,9 @@ einops
 iopath
 soundfile   # torchaudio backend for reading wav/mp3 (ESC-50)
 
-# Qdrant client
-qdrant-client==1.7.0
+# Qdrant client — must be recent enough to parse current Qdrant Cloud server
+# responses (1.7.0 chokes on newer server fields like strict_mode_config).
+qdrant-client>=1.12,<2
 
 # Redis / Celery
 redis==5.0.1
