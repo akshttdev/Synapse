@@ -42,7 +42,7 @@ from typing import Dict, List, Optional
 # Allow `python scripts/demo_dataset/fetch_aligned.py` from anywhere.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from categories import CATEGORIES  # type: ignore  # noqa: E402
+from categories import CATEGORIES, ALL_VISUAL  # type: ignore  # noqa: E402
 
 UA = "synapse-demo-dataset/1.0 (https://github.com/akshttdev/synapse; bodhimgmt@gmail.com)"
 ESC50_ZIP = "https://github.com/karolpiczak/ESC-50/archive/refs/heads/master.zip"
@@ -150,7 +150,7 @@ def fetch_images(out: Path, per_cat: int, workers: int) -> List[Dict]:
         return local_rows
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = [ex.submit(one_category, c) for c in CATEGORIES]
+        futs = [ex.submit(one_category, c) for c in ALL_VISUAL]
         for f in as_completed(futs):
             rows.extend(f.result())
     return rows
@@ -244,7 +244,7 @@ def fetch_text(out: Path, per_cat: int) -> List[Dict]:
             "url": (j.get("content_urls") or {}).get("desktop", {}).get("page"),
         }
 
-    for cat in CATEGORIES:
+    for cat in ALL_VISUAL:
         seen_titles = set()
         # 1) the canonical article
         j = summary(cat.wiki)
@@ -342,10 +342,12 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("data/demo"))
     # Defaults sized to fill the B2 free tier (≈5-7 GB) with an image-heavy,
     # diverse, cross-modal set. Scale up/down with these flags.
-    ap.add_argument("--images-per-cat", type=int, default=120)  # ~41*120 ≈ 4900 imgs
+    # ~140 distinct subjects (41 aligned + ~100 diverse). Fewer images each =
+    # broad, not redundant. Bump --images-per-cat for more volume.
+    ap.add_argument("--images-per-cat", type=int, default=15)   # ~140*15 ≈ 2100 imgs
     ap.add_argument("--audio-per-cat", type=int, default=40)    # all ESC-50 clips/class
-    ap.add_argument("--text-per-cat", type=int, default=6)
-    ap.add_argument("--videos-total", type=int, default=180)
+    ap.add_argument("--text-per-cat", type=int, default=2)
+    ap.add_argument("--videos-total", type=int, default=160)
     ap.add_argument("--workers", type=int, default=3)  # gentle on Wikimedia's API
     ap.add_argument("--skip", default="", help="comma list of modalities to skip: image,audio,video,text")
     args = ap.parse_args()
