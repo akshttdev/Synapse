@@ -1,4 +1,4 @@
-.PHONY: help up down build rebuild logs ps shell-backend shell-worker shell-redis shell-qdrant clean nuke health demo snapshot ingest ingest-dry stats activity samples dataset
+.PHONY: help up down build rebuild logs ps shell-backend shell-redis shell-qdrant clean nuke health demo snapshot ingest ingest-dry stats activity samples dataset
 
 COMPOSE ?= docker compose
 # Apple's /usr/bin/python3 has httpx + works; brew's 3.14 has a broken pyexpat
@@ -10,7 +10,7 @@ help:
 	@echo "make down        stop stack (keep volumes)"
 	@echo "make build       build all images"
 	@echo "make rebuild     build without cache"
-	@echo "make logs        tail backend + worker logs"
+	@echo "make logs        tail backend logs"
 	@echo "make ps          show running services"
 	@echo "make health      hit /health/ready"
 	@echo "make shell-*     open shell into a container"
@@ -41,7 +41,7 @@ rebuild:
 	$(COMPOSE) build --no-cache
 
 logs:
-	$(COMPOSE) logs -f backend worker
+	$(COMPOSE) logs -f backend
 
 ps:
 	$(COMPOSE) ps
@@ -51,9 +51,6 @@ health:
 
 shell-backend:
 	$(COMPOSE) exec backend bash
-
-shell-worker:
-	$(COMPOSE) exec worker bash
 
 shell-redis:
 	$(COMPOSE) exec redis redis-cli

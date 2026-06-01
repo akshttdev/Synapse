@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import time
 import logging
 
-from api.routes import search, upload, health, stats, media
+from api.routes import search, health, stats, media
 from core.config import get_settings
 from core.cache import get_cache_manager
 
@@ -77,7 +77,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(search.router, prefix=f"{settings.API_V1_PREFIX}/search", tags=["search"])
-app.include_router(upload.router, prefix=f"{settings.API_V1_PREFIX}/upload", tags=["upload"])
 app.include_router(stats.router, prefix=f"{settings.API_V1_PREFIX}/stats", tags=["stats"])
 app.include_router(media.router, prefix=f"{settings.API_V1_PREFIX}/media", tags=["media"])
 app.include_router(health.router, prefix="/health", tags=["health"])

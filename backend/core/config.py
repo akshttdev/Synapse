@@ -1,5 +1,5 @@
 """
-Centralised settings for backend + workers.
+Centralised settings for the backend.
 
 Every env var the codebase reads MUST be declared here. Undeclared vars are
 ignored by pydantic-settings, which silently produces AttributeError at
@@ -39,12 +39,6 @@ class Settings(BaseSettings):
     REDIS_REST_TOKEN: str = ""
     CACHE_TTL: int = 3600
 
-    # Celery (defaults to REDIS_URL when unset)
-    CELERY_BROKER_URL: str = ""
-    CELERY_RESULT_BACKEND: str = ""
-    BROKER_URL: str = ""
-    RESULT_BACKEND: str = ""
-
     # Object storage (S3-compatible: AWS S3, Cloudflare R2, Oracle, MinIO, …)
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
@@ -80,17 +74,9 @@ class Settings(BaseSettings):
     @field_validator("MODEL_DEVICE")
     @classmethod
     def _validate_device(cls, v: str) -> str:
-        if v == "cpu" or v.startswith("cuda"):
+        if v == "cpu" or v == "mps" or v.startswith("cuda"):
             return v
-        raise ValueError(f"MODEL_DEVICE must be 'cpu' or 'cuda[:N]', got {v!r}")
-
-    @property
-    def celery_broker(self) -> str:
-        return self.BROKER_URL or self.CELERY_BROKER_URL or self.REDIS_URL
-
-    @property
-    def celery_backend(self) -> str:
-        return self.RESULT_BACKEND or self.CELERY_RESULT_BACKEND or self.REDIS_URL
+        raise ValueError(f"MODEL_DEVICE must be 'cpu', 'mps', or 'cuda[:N]', got {v!r}")
 
 
 @lru_cache

@@ -33,7 +33,7 @@ export const archNodes: ArchNode[] = [
   { id: 'browser', label: 'Browser',   x: -2.0, y:  0.0, z:  0.0, blurb: 'Next.js app served from Vercel edge. Renders DOM overlays above the shared canvas.', file: 'frontend/app/page.tsx' },
   { id: 'next',    label: 'Next.js',   x: -1.0, y:  0.5, z:  0.0, blurb: 'App Router + React 19. Streams the landing and proxies dev API calls.', file: 'frontend/next.config.ts' },
   { id: 'api',     label: 'FastAPI',   x:  0.0, y:  0.0, z:  0.0, blurb: 'Python service. Accepts multipart queries, returns top_k results across all modalities.', file: 'backend/api/main.py' },
-  { id: 'queue',   label: 'Celery',    x:  0.0, y: -0.8, z:  0.0, blurb: 'Per-modality queues over Redis. GPU-bound tasks isolated from text/upload.', file: 'workers/celery_app.py' },
+  { id: 'queue',   label: 'Redis',     x:  0.0, y: -0.8, z:  0.0, blurb: 'Response cache for repeat queries. The search path is synchronous — no queue or broker.', file: 'backend/core/cache.py' },
   { id: 'model',   label: 'ImageBind', x:  1.0, y:  0.5, z:  0.0, blurb: 'Meta’s 1024-d shared embedding model. One vector space for image, audio, video, text.', file: 'backend/core/embeddings.py' },
   { id: 'vec',     label: 'Qdrant',    x:  2.0, y:  0.0, z:  0.0, blurb: 'Single HNSW collection. Cosine distance. INT8 scalar quantization. Modality field indexed.', file: 'backend/core/qdrant_client.py' },
   { id: 's3',      label: 'S3',        x:  0.5, y:  0.9, z:  0.0, blurb: 'Original media + thumbnails + previews. Presigned URLs returned with results.', file: 'backend/core/storage.py' },

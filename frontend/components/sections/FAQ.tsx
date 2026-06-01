@@ -22,15 +22,15 @@ const QUESTIONS: QA[] = [
   },
   {
     q: 'HOW FAST IS A QUERY?',
-    a: 'P50 lands around 30ms on a million-vector index thanks to Qdrant HNSW with int8 quantization. P99 stays under 90ms even with metadata filters layered on top.',
+    a: 'Repeat queries return in ~3ms from the Redis cache. A cold query is dominated by embedding the query itself (ImageBind) — fast on a GPU, a couple seconds on CPU — plus the Qdrant lookup. The vector search is the cheap part: HNSW + int8.',
   },
   {
     q: 'CAN I SELF-HOST IT?',
-    a: 'Yes. Synapse ships as a docker-compose stack — FastAPI backend, Celery workers, Qdrant, Redis, Postgres. Bring your own GPU box for the embedding workers and you are good.',
+    a: 'Yes. Synapse runs as a docker-compose stack — FastAPI backend (ImageBind), Qdrant for vectors, Redis for query caching, and S3-compatible object storage (e.g. Backblaze B2) for media. Embedding the corpus needs a GPU, so that runs as a one-time batch job on a GPU box; serving runs on CPU.',
   },
   {
     q: 'HOW MUCH DATA CAN I INDEX?',
-    a: 'Tested to 50M vectors per collection on a single Qdrant node with int8 quantization. Shard across nodes for larger workloads — the query API stays the same.',
+    a: 'The demo indexes ~5,700 vectors across 293 subjects on free tiers. Qdrant with int8 quantization scales to millions per node (1024-d int8 ≈ 1KB/vector); shard for more — the query API stays the same.',
   },
   {
     q: 'WHAT ABOUT PRIVACY AND DATA OWNERSHIP?',

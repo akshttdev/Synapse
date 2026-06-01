@@ -100,11 +100,18 @@ except Exception as e:
 
 class ImageBindEmbedder:
     def __init__(self, device: str = "cuda:0", batch_size: int = 32, fp16: bool = True):
-        self.device = device if torch.cuda.is_available() and device.startswith("cuda") else "cpu"
+        # Resolve the device: CUDA if asked+available, Apple MPS if asked+available,
+        # else CPU. (MPS = Apple Metal GPU; useful when serving on a Mac.)
+        _mps_ok = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
+        if device and device.startswith("cuda") and torch.cuda.is_available():
+            self.device = device
+        elif device == "mps" and _mps_ok:
+            self.device = "mps"
+        else:
+            self.device = "cpu"
         self.batch_size = batch_size
-        # fp16 autocast only makes sense on CUDA; harmless to keep flag on CPU
-        # (we simply never enter the autocast context there).
-        self.use_fp16 = bool(fp16) and self.device != "cpu"
+        # fp16 autocast is a CUDA path only; MPS/CPU run full precision.
+        self.use_fp16 = bool(fp16) and self.device.startswith("cuda")
         self.model = None
         logger.info(f"Initializing ImageBindEmbedder on {self.device} (fp16={self.use_fp16})")
         if _IMAGEBIND_AVAILABLE:

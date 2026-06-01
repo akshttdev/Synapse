@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Shared image for FastAPI backend and Celery workers.
-# Compose service `command:` selects which process runs.
+# FastAPI backend image (ImageBind embedding + Qdrant + S3-compatible storage).
 
 FROM python:3.10-slim AS base
 
@@ -41,7 +40,6 @@ RUN pip install -e /opt/ImageBind --no-deps
 
 # App code.
 COPY backend/ /app/
-COPY workers/ /app/workers/
 COPY scripts/ /app/scripts/
 
 # ImageBind's text tokenizer loads "bpe/..." relative to CWD (/app). The vocab
@@ -51,10 +49,9 @@ RUN cp -r /opt/ImageBind/imagebind/bpe /app/bpe 2>/dev/null || cp -r /opt/ImageB
 # Default data dirs (compose mounts ./data over this).
 RUN mkdir -p /app/data/uploads /app/data/embeddings /app/data/thumbnails
 
-# PYTHONPATH lets `core.config`, `api.main`, `workers.celery_app` all resolve.
+# PYTHONPATH lets `core.config`, `api.main`, `scripts.*` resolve.
 ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-# Default command: FastAPI. Worker compose service overrides with `command:`.
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
