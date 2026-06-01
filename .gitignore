@@ -158,3 +158,10 @@ data/samples/
 
 # Full dataset fetched by scripts/fetch_dataset.py — multi-GB, regenerable
 data/dataset/
+
+# Demo dataset fetched by scripts/demo_dataset/fetch_aligned.py — regenerable
+data/demo/
+
+# Local-only state / tool caches — never push
+.superpowers/
+.synapse-ingest.json
