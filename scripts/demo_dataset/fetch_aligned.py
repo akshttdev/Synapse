@@ -31,6 +31,7 @@ import io
 import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -56,14 +57,38 @@ def _req(url: str, accept: Optional[str] = None) -> urllib.request.Request:
     return urllib.request.Request(url, headers=headers)
 
 
+def _with_retry(fn, retries: int = 6, base: float = 1.0):
+    """Run fn() with exponential backoff on 429/503/transient network errors."""
+    delay = base
+    for attempt in range(retries):
+        try:
+            return fn()
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503, 500) and attempt < retries - 1:
+                time.sleep(delay)
+                delay = min(delay * 2, 30)
+                continue
+            raise
+        except Exception:  # noqa: BLE001 — timeouts, conn reset, etc.
+            if attempt < retries - 1:
+                time.sleep(delay)
+                delay = min(delay * 2, 30)
+                continue
+            raise
+
+
 def get_json(url: str, timeout: float = 30.0) -> dict:
-    with urllib.request.urlopen(_req(url, "application/json"), timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    def _do():
+        with urllib.request.urlopen(_req(url, "application/json"), timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    return _with_retry(_do)
 
 
 def get_bytes(url: str, timeout: float = 120.0) -> bytes:
-    with urllib.request.urlopen(_req(url), timeout=timeout) as r:
-        return r.read()
+    def _do():
+        with urllib.request.urlopen(_req(url), timeout=timeout) as r:
+            return r.read()
+    return _with_retry(_do)
 
 
 def log(msg: str) -> None:
@@ -148,12 +173,21 @@ def fetch_audio(out: Path, per_cat: int) -> List[Dict]:
     wanted = {c.key for c in CATEGORIES}
     rows: List[Dict] = []
 
-    log(f"  [audio] downloading ESC-50 (~620 MB) …")
-    try:
-        zip_bytes = get_bytes(ESC50_ZIP, timeout=900.0)
-    except Exception as e:  # noqa: BLE001
-        log(f"  [audio] ESC-50 download failed: {e}")
-        return rows
+    cache = out.parent / "esc50.zip"
+    if cache.exists() and cache.stat().st_size > 1_000_000:
+        log(f"  [audio] using cached ESC-50 zip")
+        zip_bytes = cache.read_bytes()
+    else:
+        log(f"  [audio] downloading ESC-50 (~620 MB) …")
+        try:
+            zip_bytes = get_bytes(ESC50_ZIP, timeout=900.0)
+        except Exception as e:  # noqa: BLE001
+            log(f"  [audio] ESC-50 download failed: {e}")
+            return rows
+        try:
+            cache.write_bytes(zip_bytes)
+        except OSError:
+            pass
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         meta_name = next(n for n in zf.namelist() if n.endswith("meta/esc50.csv"))
@@ -312,7 +346,7 @@ def main() -> int:
     ap.add_argument("--audio-per-cat", type=int, default=40)    # all ESC-50 clips/class
     ap.add_argument("--text-per-cat", type=int, default=6)
     ap.add_argument("--videos-total", type=int, default=180)
-    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--workers", type=int, default=3)  # gentle on Wikimedia's API
     ap.add_argument("--skip", default="", help="comma list of modalities to skip: image,audio,video,text")
     args = ap.parse_args()
 
@@ -322,7 +356,7 @@ def main() -> int:
     started = time.time()
 
     if "image" not in skip:
-        log("[image] Openverse"); rows += fetch_images(args.out, args.images_per_cat, args.workers)
+        log("[image] Wikimedia Commons"); rows += fetch_images(args.out, args.images_per_cat, args.workers)
     if "audio" not in skip:
         log("[audio] ESC-50"); rows += fetch_audio(args.out, args.audio_per_cat)
     if "text" not in skip:
