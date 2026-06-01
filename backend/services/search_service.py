@@ -183,18 +183,23 @@ class SearchService:
             # Balanced cross-modal: ImageBind has a modality gap (same-modality
             # vectors cluster tighter), so a plain top-k is text-heavy. Pull the
             # best of EACH modality and merge so the grid shows a real mix.
+            # Batched into ONE round-trip (query_batch_points) instead of 4
+            # sequential calls — ~4x fewer network hops to Qdrant Cloud.
             per = max(2, top_k // 4)
-            merged = []
-            for m in ("image", "audio", "video", "text"):
-                mf = qmodels.Filter(must=[qmodels.FieldCondition(
-                    key="modality", match=qmodels.MatchValue(value=m))])
-                merged.extend(self.qdrant.query_points(
-                    collection_name=self.collection,
+            requests = [
+                qmodels.QueryRequest(
                     query=vec,
+                    filter=qmodels.Filter(must=[qmodels.FieldCondition(
+                        key="modality", match=qmodels.MatchValue(value=m))]),
                     limit=per,
                     with_payload=True,
-                    query_filter=mf,
-                ).points)
+                )
+                for m in ("image", "audio", "video", "text")
+            ]
+            batched = self.qdrant.query_batch_points(
+                collection_name=self.collection, requests=requests
+            )
+            merged = [p for resp in batched for p in resp.points]
             merged.sort(key=lambda p: p.score, reverse=True)
             results = merged[:top_k]
         search_ms = (time.time() - t0) * 1000
