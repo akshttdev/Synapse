@@ -53,7 +53,14 @@ except Exception:  # noqa: BLE001
                 self._aug_index = 0
                 self._clip_index += 1
             is_last = self._clip_index >= self._clips_per_video
-            return (start, end, clip_index, aug_index, is_last)
+            result = (start, end, clip_index, aug_index, is_last)
+            if is_last:
+                # CRITICAL: reset so the NEXT file's clips start from 0 (the real
+                # pytorchvideo sampler does this). Without it, files after the
+                # first in a batch get out-of-bounds, 0-sample clips.
+                self._clip_index = 0
+                self._aug_index = 0
+            return result
 
         def reset(self):
             self._clip_index = 0
